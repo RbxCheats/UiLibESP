@@ -526,6 +526,6 @@ Found a bug or have a suggestion? Feel free to:
 ---
 
 **Version:** 1.0.0  
-**Last Updated:** 2024  
+**Last Updated:** 2026  
 **Compatible With:** All Roblox games  
 **Dependencies:** None (standalone)
