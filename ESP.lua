@@ -49,14 +49,14 @@ function ESPLibrary:getBodyCorners(character)
     if not rootPart then return nil end
     
     local head = character:FindFirstChild("Head")
-    local lowerTorso = character:FindFirstChild("LowerTorso")
     local upperTorso = character:FindFirstChild("UpperTorso")
-    local leftFoot = character:FindFirstChild("LeftFoot")
+    local lowerTorso = character:FindFirstChild("LowerTorso")
     local rightFoot = character:FindFirstChild("RightFoot")
-    local leftUpperLeg = character:FindFirstChild("LeftUpperLeg")
+    local leftFoot = character:FindFirstChild("LeftFoot")
+    local rightHand = character:FindFirstChild("RightHand")
+    local leftHand = character:FindFirstChild("LeftHand")
     local rightUpperLeg = character:FindFirstChild("RightUpperLeg")
-    local leftLowerLeg = character:FindFirstChild("LeftLowerLeg")
-    local rightLowerLeg = character:FindFirstChild("RightLowerLeg")
+    local leftUpperLeg = character:FindFirstChild("LeftUpperLeg")
     
     local topPoint = rootPart.Position
     local bottomPoint = rootPart.Position
@@ -67,37 +67,27 @@ function ESPLibrary:getBodyCorners(character)
         topPoint = head.Position + Vector3.new(0, head.Size.Y / 2, 0)
     end
     
-    if leftFoot and rightFoot then
-        local leftBottom = leftFoot.Position - Vector3.new(0, leftFoot.Size.Y / 2, 0)
+    if rightFoot and leftFoot then
         local rightBottom = rightFoot.Position - Vector3.new(0, rightFoot.Size.Y / 2, 0)
-        bottomPoint = leftBottom.Y < rightBottom.Y and leftBottom or rightBottom
-    elseif leftLowerLeg and rightLowerLeg then
-        local leftBottom = leftLowerLeg.Position - Vector3.new(0, leftLowerLeg.Size.Y / 2, 0)
-        local rightBottom = rightLowerLeg.Position - Vector3.new(0, rightLowerLeg.Size.Y / 2, 0)
-        bottomPoint = leftBottom.Y < rightBottom.Y and leftBottom or rightBottom
-    elseif leftUpperLeg and rightUpperLeg then
-        local leftBottom = leftUpperLeg.Position - Vector3.new(0, leftUpperLeg.Size.Y / 2, 0)
+        local leftBottom = leftFoot.Position - Vector3.new(0, leftFoot.Size.Y / 2, 0)
+        bottomPoint = rightBottom.Y < leftBottom.Y and rightBottom or leftBottom
+    elseif rightUpperLeg and leftUpperLeg then
         local rightBottom = rightUpperLeg.Position - Vector3.new(0, rightUpperLeg.Size.Y / 2, 0)
-        bottomPoint = leftBottom.Y < rightBottom.Y and leftBottom or rightBottom
+        local leftBottom = leftUpperLeg.Position - Vector3.new(0, leftUpperLeg.Size.Y / 2, 0)
+        bottomPoint = rightBottom.Y < leftBottom.Y and rightBottom or leftBottom
     elseif lowerTorso then
         bottomPoint = lowerTorso.Position - Vector3.new(0, lowerTorso.Size.Y / 2, 0)
-    else
-        bottomPoint = rootPart.Position - Vector3.new(0, 3, 0)
     end
     
-    if upperTorso then
-        local leftSide = upperTorso.Position - Vector3.new(upperTorso.Size.X / 2, 0, 0)
-        local rightSide = upperTorso.Position + Vector3.new(upperTorso.Size.X / 2, 0, 0)
-        leftPoint = leftSide
-        rightPoint = rightSide
+    if rightHand and leftHand then
+        rightPoint = rightHand.Position + Vector3.new(rightHand.Size.X / 2, 0, 0)
+        leftPoint = leftHand.Position - Vector3.new(leftHand.Size.X / 2, 0, 0)
+    elseif upperTorso then
+        rightPoint = upperTorso.Position + Vector3.new(upperTorso.Size.X / 1.5, 0, 0)
+        leftPoint = upperTorso.Position - Vector3.new(upperTorso.Size.X / 1.5, 0, 0)
     elseif head then
-        local leftSide = head.Position - Vector3.new(head.Size.X / 1.5, 0, 0)
-        local rightSide = head.Position + Vector3.new(head.Size.X / 1.5, 0, 0)
-        leftPoint = leftSide
-        rightPoint = rightSide
-    else
-        leftPoint = rootPart.Position - Vector3.new(2, 0, 0)
-        rightPoint = rootPart.Position + Vector3.new(2, 0, 0)
+        rightPoint = head.Position + Vector3.new(head.Size.X / 1.2, 0, 0)
+        leftPoint = head.Position - Vector3.new(head.Size.X / 1.2, 0, 0)
     end
     
     return {
@@ -110,7 +100,7 @@ end
 
 function ESPLibrary:getFullBodyBounds(char)
     local camera = Workspace.CurrentCamera
-    if not camera then return nil, nil, nil, false end
+    if not camera then return nil, nil, nil, false, nil, nil end
     
     local corners = self:getBodyCorners(char)
     if not corners then return nil, nil, nil, false end
@@ -126,17 +116,23 @@ function ESPLibrary:getFullBodyBounds(char)
         return nil, nil, nil, false
     end
     
-    local minX = math.min(leftScreen.X, rightScreen.X, topScreen.X, bottomScreen.X)
-    local maxX = math.max(leftScreen.X, rightScreen.X, topScreen.X, bottomScreen.X)
-    local minY = math.min(topScreen.Y, bottomScreen.Y, leftScreen.Y, rightScreen.Y)
-    local maxY = math.max(topScreen.Y, bottomScreen.Y, leftScreen.Y, rightScreen.Y)
+    local points = {topScreen, bottomScreen, leftScreen, rightScreen}
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    
+    for _, point in ipairs(points) do
+        minX = math.min(minX, point.X)
+        maxX = math.max(maxX, point.X)
+        minY = math.min(minY, point.Y)
+        maxY = math.max(maxY, point.Y)
+    end
     
     local width = maxX - minX
     local height = maxY - minY
     local centerX = (minX + maxX) / 2
     local centerY = (minY + maxY) / 2
     
-    if width < 5 or height < 5 then
+    if width < 2 or height < 2 then
         return nil, nil, nil, false
     end
     
@@ -255,7 +251,7 @@ function ESPLibrary:update()
         end
         
         if self.healthBar then
-            local barW = 3
+            local barW = 4
             local hp = hum.Health / hum.MaxHealth
             local hH = hp * height
             
