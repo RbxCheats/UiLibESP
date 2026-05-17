@@ -40,6 +40,7 @@ function ESPLibrary.new()
     
     self.drawings = {}
     self.renderConn = nil
+    self.currentEspType = "2D Box"
     
     return self
 end
@@ -136,7 +137,7 @@ function ESPLibrary:getFullBodyBounds(char)
         return nil, nil, nil, false
     end
     
-    return Vector2.new(centerX, centerY), width, height, true, minY, maxY
+    return Vector2.new(centerX, centerY), width, height, true, minY, maxY, minX, maxX
 end
 
 function ESPLibrary:clearPlayerDrawings(char)
@@ -147,17 +148,18 @@ function ESPLibrary:clearPlayerDrawings(char)
         if d.tracer then d.tracer.Visible = false end
         if d.healthBG then d.healthBG.Visible = false end
         if d.healthMain then d.healthMain.Visible = false end
-        if d.c1 then 
-            for i = 1, 8 do 
-                local ln = d["c"..i] 
-                if ln then ln.Visible = false end 
+        
+        for i = 1, 8 do 
+            local ln = d["c"..i] 
+            if ln then 
+                ln.Visible = false 
             end 
         end
     end
 end
 
 function ESPLibrary:clearAllDrawings()
-    for char, cache in pairs(self.drawings) do
+    for char, _ in pairs(self.drawings) do
         self:clearPlayerDrawings(char)
     end
 end
@@ -211,36 +213,68 @@ function ESPLibrary:update()
         
         self:createDrawingsForPlayer(char)
         local d = self.drawings[char]
-        local center, width, height, onScreen, topY, bottomY = self:getFullBodyBounds(char)
+        local center, width, height, onScreen, topY, bottomY, leftX, rightX = self:getFullBodyBounds(char)
         
         if not onScreen then 
             self:clearPlayerDrawings(char)
             continue
         end
         
+        local boxX = center.X - width/2
+        local boxY = center.Y - height/2
+        
         if self.espType == "2D Box" then
+            if self.currentEspType ~= "2D Box" then
+                for i = 1, 8 do
+                    local ln = d["c"..i]
+                    if ln then ln.Visible = false end
+                end
+            end
             d.box.Visible = true
             d.box.Size = Vector2.new(width, height)
-            d.box.Position = Vector2.new(center.X - width/2, center.Y - height/2)
+            d.box.Position = Vector2.new(boxX, boxY)
             d.box.Color = self.espColor
+            self.currentEspType = "2D Box"
         elseif self.espType == "Corner Box" then
-            local cs = math.min(width / 4, 20)
-            local px, py = center.X - width/2, center.Y - height/2
+            if self.currentEspType ~= "Corner Box" then
+                d.box.Visible = false
+            end
             
-            d.c1.From, d.c1.To = Vector2.new(px, py), Vector2.new(px + cs, py)
-            d.c2.From, d.c2.To = Vector2.new(px, py), Vector2.new(px, py + cs)
-            d.c3.From, d.c3.To = Vector2.new(px + width, py), Vector2.new(px + width - cs, py)
-            d.c4.From, d.c4.To = Vector2.new(px + width, py), Vector2.new(px + width, py + cs)
-            d.c5.From, d.c5.To = Vector2.new(px, py + height), Vector2.new(px + cs, py + height)
-            d.c6.From, d.c6.To = Vector2.new(px, py + height), Vector2.new(px, py + height - cs)
-            d.c7.From, d.c7.To = Vector2.new(px + width, py + height), Vector2.new(px + width - cs, py + height)
-            d.c8.From, d.c8.To = Vector2.new(px + width, py + height), Vector2.new(px + width, py + height - cs)
+            local distance = (camera.CFrame.Position - root.Position).Magnitude
+            local offset = math.clamp(1 / distance * 750, 2, 300)
+            
+            local topLeft = Vector2.new(boxX, boxY)
+            local topRight = Vector2.new(boxX + width, boxY)
+            local bottomLeft = Vector2.new(boxX, boxY + height)
+            local bottomRight = Vector2.new(boxX + width, boxY + height)
+            
+            d.c1.From = topLeft
+            d.c1.To = Vector2.new(topLeft.X + offset, topLeft.Y)
+            d.c2.From = topLeft
+            d.c2.To = Vector2.new(topLeft.X, topLeft.Y + offset)
+            
+            d.c3.From = topRight
+            d.c3.To = Vector2.new(topRight.X - offset, topRight.Y)
+            d.c4.From = topRight
+            d.c4.To = Vector2.new(topRight.X, topRight.Y + offset)
+            
+            d.c5.From = bottomLeft
+            d.c5.To = Vector2.new(bottomLeft.X + offset, bottomLeft.Y)
+            d.c6.From = bottomLeft
+            d.c6.To = Vector2.new(bottomLeft.X, bottomLeft.Y - offset)
+            
+            d.c7.From = bottomRight
+            d.c7.To = Vector2.new(bottomRight.X - offset, bottomRight.Y)
+            d.c8.From = bottomRight
+            d.c8.To = Vector2.new(bottomRight.X, bottomRight.Y - offset)
             
             for i = 1, 8 do 
                 local ln = d["c"..i]
                 ln.Visible = true
                 ln.Color = self.espColor
+                ln.Thickness = math.clamp(1 / distance * 100, 1, 3)
             end
+            self.currentEspType = "Corner Box"
         end
         
         if self.nameEsp then
@@ -248,6 +282,8 @@ function ESPLibrary:update()
             d.name.Text = player.Name
             d.name.Position = Vector2.new(center.X, center.Y - height/2 - 15)
             d.name.Color = self.nameColor
+        else
+            d.name.Visible = false
         end
         
         if self.healthBar then
@@ -270,6 +306,9 @@ function ESPLibrary:update()
                 healthColor = Color3.fromRGB(255, 165, 0)
             end
             d.healthMain.Color = healthColor
+        else
+            if d.healthBG then d.healthBG.Visible = false end
+            if d.healthMain then d.healthMain.Visible = false end
         end
         
         if self.tracers then
@@ -277,6 +316,8 @@ function ESPLibrary:update()
             d.tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
             d.tracer.To = Vector2.new(center.X, center.Y + height/2)
             d.tracer.Color = self.tracerColor
+        else
+            if d.tracer then d.tracer.Visible = false end
         end
     end
     
