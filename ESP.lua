@@ -1,6 +1,6 @@
 -- ================================================================
 -- Standalone ESP Library
--- Supports: 2D Box, Corner Box, Name ESP, Tracers, Health Bar, Team Colors
+-- Supports: 2D Box, Corner Box, Name ESP, Tracers, Health Bar
 -- ================================================================
 
 local ESPLibrary = {}
@@ -31,17 +31,11 @@ function ESPLibrary.new()
     self.tracers = false
     self.healthBar = false
     self.ignoreLocal = true
-    self.useTeamColors = false
     
     self.espColor = Color3.fromRGB(255, 255, 255)
     self.nameColor = Color3.fromRGB(255, 255, 255)
     self.tracerColor = Color3.fromRGB(255, 255, 255)
     self.healthBarColor = Color3.fromRGB(0, 255, 0)
-    
-    self.teamColors = {
-        Red = Color3.fromRGB(255, 50, 50),
-        Blue = Color3.fromRGB(50, 100, 255)
-    }
     
     self.drawings = {}
     self.renderConn = nil
@@ -49,80 +43,77 @@ function ESPLibrary.new()
     return self
 end
 
-function ESPLibrary:getPlayerColor(player)
-    if self.useTeamColors then
-        if player.Team and player.Team.Name == "Red" then
-            return self.teamColors.Red
-        elseif player.Team and player.Team.Name == "Blue" then
-            return self.teamColors.Blue
-        end
-    end
-    return self.espColor
-end
-
 function ESPLibrary:getFullBodyBounds(char)
     local camera = workspace.CurrentCamera
     if not camera then return nil, nil, nil, false end
     
-    local root = char:FindFirstChild("HumanoidRootPart")
-    local head = char:FindFirstChild("Head")
-    local lowerTorso = char:FindFirstChild("LowerTorso")
-    local upperTorso = char:FindFirstChild("UpperTorso")
-    local leftFoot = char:FindFirstChild("LeftFoot")
-    local rightFoot = char:FindFirstChild("RightFoot")
-    local leftLeg = char:FindFirstChild("LeftLowerLeg")
-    local rightLeg = char:FindFirstChild("RightLowerLeg")
+    local parts = {
+        "Head",
+        "UpperTorso",
+        "LowerTorso", 
+        "HumanoidRootPart",
+        "LeftUpperArm",
+        "RightUpperArm",
+        "LeftLowerArm",
+        "RightLowerArm",
+        "LeftHand",
+        "RightHand",
+        "LeftUpperLeg",
+        "RightUpperLeg",
+        "LeftLowerLeg",
+        "RightLowerLeg",
+        "LeftFoot",
+        "RightFoot"
+    }
     
-    if not root then return nil, nil, nil, false end
+    local validParts = {}
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    local anyOnScreen = false
     
-    local topPoint = root.Position
-    local bottomPoint = root.Position
-    local leftPoint = root.Position
-    local rightPoint = root.Position
-    
-    if head then
-        topPoint = head.Position + Vector3.new(0, head.Size.Y / 2, 0)
+    for _, partName in ipairs(parts) do
+        local part = char:FindFirstChild(partName)
+        if part then
+            local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+            if onScreen then
+                anyOnScreen = true
+                minX = math.min(minX, screenPos.X)
+                maxX = math.max(maxX, screenPos.X)
+                minY = math.min(minY, screenPos.Y)
+                maxY = math.max(maxY, screenPos.Y)
+            end
+            table.insert(validParts, part)
+        end
     end
     
-    if leftFoot and rightFoot then
-        local leftBottom = leftFoot.Position - Vector3.new(0, leftFoot.Size.Y / 2, 0)
-        local rightBottom = rightFoot.Position - Vector3.new(0, rightFoot.Size.Y / 2, 0)
-        bottomPoint = leftBottom.Y < rightBottom.Y and leftBottom or rightBottom
-    elseif leftLeg and rightLeg then
-        local leftBottom = leftLeg.Position - Vector3.new(0, leftLeg.Size.Y / 2, 0)
-        local rightBottom = rightLeg.Position - Vector3.new(0, rightLeg.Size.Y / 2, 0)
-        bottomPoint = leftBottom.Y < rightBottom.Y and leftBottom or rightBottom
-    elseif lowerTorso then
-        bottomPoint = lowerTorso.Position - Vector3.new(0, lowerTorso.Size.Y / 2, 0)
-    else
-        bottomPoint = root.Position - Vector3.new(0, 3, 0)
+    if not anyOnScreen then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
+            if onScreen then
+                anyOnScreen = true
+                minX, maxX = screenPos.X - 50, screenPos.X + 50
+                minY, maxY = screenPos.Y - 100, screenPos.Y + 100
+            end
+        end
     end
     
-    if upperTorso then
-        local leftSide = upperTorso.Position - Vector3.new(upperTorso.Size.X / 2, 0, 0)
-        local rightSide = upperTorso.Position + Vector3.new(upperTorso.Size.X / 2, 0, 0)
-        leftPoint = leftSide
-        rightPoint = rightSide
-    else
-        leftPoint = root.Position - Vector3.new(1.5, 0, 0)
-        rightPoint = root.Position + Vector3.new(1.5, 0, 0)
-    end
-    
-    local topScreen = camera:WorldToViewportPoint(topPoint)
-    local bottomScreen = camera:WorldToViewportPoint(bottomPoint)
-    local leftScreen = camera:WorldToViewportPoint(leftPoint)
-    local rightScreen = camera:WorldToViewportPoint(rightPoint)
-    
-    if not (topScreen.Z > 0 and bottomScreen.Z > 0) then
+    if not anyOnScreen then
         return nil, nil, nil, false
     end
     
-    local height = math.abs(topScreen.Y - bottomScreen.Y)
-    local width = math.abs(rightScreen.X - leftScreen.X)
-    local centerX = (leftScreen.X + rightScreen.X) / 2
-    local centerY = (topScreen.Y + bottomScreen.Y) / 2
+    local padding = 5
+    minX = math.max(0, minX - padding)
+    minY = math.max(0, minY - padding)
+    maxX = math.min(camera.ViewportSize.X, maxX + padding)
+    maxY = math.min(camera.ViewportSize.Y, maxY + padding)
     
-    if height < 5 or width < 5 then
+    local width = maxX - minX
+    local height = maxY - minY
+    local centerX = (minX + maxX) / 2
+    local centerY = (minY + maxY) / 2
+    
+    if width < 10 or height < 10 then
         return nil, nil, nil, false
     end
     
@@ -208,13 +199,11 @@ function ESPLibrary:update()
             continue
         end
         
-        local playerColor = self:getPlayerColor(player)
-        
         if self.espType == "2D Box" then
             d.box.Visible = true
             d.box.Size = Vector2.new(width, height)
             d.box.Position = Vector2.new(center.X - width/2, center.Y - height/2)
-            d.box.Color = playerColor
+            d.box.Color = self.espColor
         elseif self.espType == "Corner Box" then
             local cs = math.min(width / 4, 20)
             local px, py = center.X - width/2, center.Y - height/2
@@ -231,7 +220,7 @@ function ESPLibrary:update()
             for i = 1, 8 do 
                 local ln = d["c"..i]
                 ln.Visible = true
-                ln.Color = playerColor
+                ln.Color = self.espColor
             end
         end
         
