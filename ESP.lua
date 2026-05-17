@@ -45,87 +45,44 @@ function ESPLibrary.new()
     return self
 end
 
-function ESPLibrary:getBodyCorners(character)
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return nil end
-    
-    local head = character:FindFirstChild("Head")
-    local upperTorso = character:FindFirstChild("UpperTorso")
-    local lowerTorso = character:FindFirstChild("LowerTorso")
-    local rightFoot = character:FindFirstChild("RightFoot")
-    local leftFoot = character:FindFirstChild("LeftFoot")
-    local rightHand = character:FindFirstChild("RightHand")
-    local leftHand = character:FindFirstChild("LeftHand")
-    local rightUpperLeg = character:FindFirstChild("RightUpperLeg")
-    local leftUpperLeg = character:FindFirstChild("LeftUpperLeg")
-    
-    local topPoint = rootPart.Position
-    local bottomPoint = rootPart.Position
-    local leftPoint = rootPart.Position
-    local rightPoint = rootPart.Position
-    
-    if head then
-        topPoint = head.Position + Vector3.new(0, head.Size.Y / 2, 0)
-    end
-    
-    if rightFoot and leftFoot then
-        local rightBottom = rightFoot.Position - Vector3.new(0, rightFoot.Size.Y / 2, 0)
-        local leftBottom = leftFoot.Position - Vector3.new(0, leftFoot.Size.Y / 2, 0)
-        bottomPoint = rightBottom.Y < leftBottom.Y and rightBottom or leftBottom
-    elseif rightUpperLeg and leftUpperLeg then
-        local rightBottom = rightUpperLeg.Position - Vector3.new(0, rightUpperLeg.Size.Y / 2, 0)
-        local leftBottom = leftUpperLeg.Position - Vector3.new(0, leftUpperLeg.Size.Y / 2, 0)
-        bottomPoint = rightBottom.Y < leftBottom.Y and rightBottom or leftBottom
-    elseif lowerTorso then
-        bottomPoint = lowerTorso.Position - Vector3.new(0, lowerTorso.Size.Y / 2, 0)
-    end
-    
-    if rightHand and leftHand then
-        rightPoint = rightHand.Position + Vector3.new(rightHand.Size.X / 2, 0, 0)
-        leftPoint = leftHand.Position - Vector3.new(leftHand.Size.X / 2, 0, 0)
-    elseif upperTorso then
-        rightPoint = upperTorso.Position + Vector3.new(upperTorso.Size.X / 1.5, 0, 0)
-        leftPoint = upperTorso.Position - Vector3.new(upperTorso.Size.X / 1.5, 0, 0)
-    elseif head then
-        rightPoint = head.Position + Vector3.new(head.Size.X / 1.2, 0, 0)
-        leftPoint = head.Position - Vector3.new(head.Size.X / 1.2, 0, 0)
-    end
-    
+function ESPLibrary:getBoundingVectors(part)
+    local partCFrame, partSize = part.CFrame, part.Size 
+    local X, Y, Z = partSize.X, partSize.Y, partSize.Z
     return {
-        Top = topPoint,
-        Bottom = bottomPoint,
-        Left = leftPoint,
-        Right = rightPoint
+        TBRC = partCFrame * CFrame.new(X, Y * 1.3, Z),
+        TBLC = partCFrame * CFrame.new(-X, Y * 1.3, Z),
+        TFRC = partCFrame * CFrame.new(X, Y * 1.3, -Z),
+        TFLC = partCFrame * CFrame.new(-X, Y * 1.3, -Z),
+        BBRC = partCFrame * CFrame.new(X, -Y * 1.6, Z),
+        BBLC = partCFrame * CFrame.new(-X, -Y * 1.6, Z),
+        BFRC = partCFrame * CFrame.new(X, -Y * 1.6, -Z),
+        BFLC = partCFrame * CFrame.new(-X, -Y * 1.6, -Z),
     }
 end
 
-function ESPLibrary:getFullBodyBounds(char)
+function ESPLibrary:getScreenBounds(char)
     local camera = Workspace.CurrentCamera
     if not camera then return nil, nil, nil, false, nil, nil end
     
-    local corners = self:getBodyCorners(char)
-    if not corners then return nil, nil, nil, false end
+    local rootPart = char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
     
-    local topScreen = camera:WorldToViewportPoint(corners.Top)
-    local bottomScreen = camera:WorldToViewportPoint(corners.Bottom)
-    local leftScreen = camera:WorldToViewportPoint(corners.Left)
-    local rightScreen = camera:WorldToViewportPoint(corners.Right)
-    
-    local isVisible = topScreen.Z > 0 and bottomScreen.Z > 0
-    
-    if not isVisible then
+    if not rootPart or not humanoid or humanoid.Health <= 0 then
         return nil, nil, nil, false
     end
     
-    local points = {topScreen, bottomScreen, leftScreen, rightScreen}
-    local minX, maxX = math.huge, -math.huge
-    local minY, maxY = math.huge, -math.huge
+    local dimensions = self:getBoundingVectors(rootPart)
     
-    for _, point in ipairs(points) do
-        minX = math.min(minX, point.X)
-        maxX = math.max(maxX, point.X)
-        minY = math.min(minY, point.Y)
-        maxY = math.max(maxY, point.Y)
+    local minX, maxX = camera.ViewportSize.X, 0
+    local minY, maxY = camera.ViewportSize.Y, 0
+    
+    for _, cf in pairs(dimensions) do
+        local vector = camera:WorldToViewportPoint(cf.Position)
+        local x, y = vector.X, vector.Y
+        if x < minX then minX = x end
+        if x > maxX then maxX = x end
+        if y < minY then minY = y end
+        if y > maxY then maxY = y end
     end
     
     local width = maxX - minX
@@ -137,7 +94,7 @@ function ESPLibrary:getFullBodyBounds(char)
         return nil, nil, nil, false
     end
     
-    return Vector2.new(centerX, centerY), width, height, true, minY, maxY, minX, maxX
+    return Vector2.new(centerX, centerY), width, height, true, minX, minY, maxX, maxY
 end
 
 function ESPLibrary:clearPlayerDrawings(char)
@@ -213,15 +170,15 @@ function ESPLibrary:update()
         
         self:createDrawingsForPlayer(char)
         local d = self.drawings[char]
-        local center, width, height, onScreen, topY, bottomY, leftX, rightX = self:getFullBodyBounds(char)
+        local center, width, height, onScreen, minX, minY, maxX, maxY = self:getScreenBounds(char)
         
         if not onScreen then 
             self:clearPlayerDrawings(char)
             continue
         end
         
-        local boxX = center.X - width/2
-        local boxY = center.Y - height/2
+        local boxX = minX
+        local boxY = minY
         
         if self.espType == "2D Box" then
             if self.currentEspType ~= "2D Box" then
@@ -280,7 +237,7 @@ function ESPLibrary:update()
         if self.nameEsp then
             d.name.Visible = true
             d.name.Text = player.Name
-            d.name.Position = Vector2.new(center.X, center.Y - height/2 - 15)
+            d.name.Position = Vector2.new(center.X, minY - 15)
             d.name.Color = self.nameColor
         else
             d.name.Visible = false
@@ -293,11 +250,11 @@ function ESPLibrary:update()
             
             d.healthBG.Visible = true
             d.healthBG.Size = Vector2.new(barW + 2, height)
-            d.healthBG.Position = Vector2.new(center.X + width/2 + 3, center.Y - height/2)
+            d.healthBG.Position = Vector2.new(maxX + 3, minY)
             
             d.healthMain.Visible = true
             d.healthMain.Size = Vector2.new(barW, hH)
-            d.healthMain.Position = Vector2.new(center.X + width/2 + 4, center.Y + height/2 - hH)
+            d.healthMain.Position = Vector2.new(maxX + 4, minY + height - hH)
             
             local healthColor = self.healthBarColor
             if hp <= 0.3 then
@@ -314,7 +271,7 @@ function ESPLibrary:update()
         if self.tracers then
             d.tracer.Visible = true
             d.tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-            d.tracer.To = Vector2.new(center.X, center.Y + height/2)
+            d.tracer.To = Vector2.new(center.X, minY + height)
             d.tracer.Color = self.tracerColor
         else
             if d.tracer then d.tracer.Visible = false end
