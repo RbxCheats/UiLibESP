@@ -1,6 +1,6 @@
 -- ================================================================
 -- Standalone ESP Library
--- Supports: 2D Box, Corner Box, Name ESP, Tracers, Health Bar
+-- Supports: 2D Box, Corner Box, Name ESP, Tracers, Health Bar, Team Colors
 -- ================================================================
 
 local ESPLibrary = {}
@@ -31,16 +31,33 @@ function ESPLibrary.new()
     self.tracers = false
     self.healthBar = false
     self.ignoreLocal = true
+    self.useTeamColors = false
     
     self.espColor = Color3.fromRGB(255, 255, 255)
     self.nameColor = Color3.fromRGB(255, 255, 255)
     self.tracerColor = Color3.fromRGB(255, 255, 255)
     self.healthBarColor = Color3.fromRGB(0, 255, 0)
     
+    self.teamColors = {
+        Red = Color3.fromRGB(255, 50, 50),
+        Blue = Color3.fromRGB(50, 100, 255)
+    }
+    
     self.drawings = {}
     self.renderConn = nil
     
     return self
+end
+
+function ESPLibrary:getPlayerColor(player)
+    if self.useTeamColors then
+        if player.Team and player.Team.Name == "Red" then
+            return self.teamColors.Red
+        elseif player.Team and player.Team.Name == "Blue" then
+            return self.teamColors.Blue
+        end
+    end
+    return self.espColor
 end
 
 function ESPLibrary:getFullBodyBounds(char)
@@ -50,13 +67,18 @@ function ESPLibrary:getFullBodyBounds(char)
     local root = char:FindFirstChild("HumanoidRootPart")
     local head = char:FindFirstChild("Head")
     local lowerTorso = char:FindFirstChild("LowerTorso")
+    local upperTorso = char:FindFirstChild("UpperTorso")
     local leftFoot = char:FindFirstChild("LeftFoot")
     local rightFoot = char:FindFirstChild("RightFoot")
+    local leftLeg = char:FindFirstChild("LeftLowerLeg")
+    local rightLeg = char:FindFirstChild("RightLowerLeg")
     
     if not root then return nil, nil, nil, false end
     
     local topPoint = root.Position
     local bottomPoint = root.Position
+    local leftPoint = root.Position
+    local rightPoint = root.Position
     
     if head then
         topPoint = head.Position + Vector3.new(0, head.Size.Y / 2, 0)
@@ -66,22 +88,45 @@ function ESPLibrary:getFullBodyBounds(char)
         local leftBottom = leftFoot.Position - Vector3.new(0, leftFoot.Size.Y / 2, 0)
         local rightBottom = rightFoot.Position - Vector3.new(0, rightFoot.Size.Y / 2, 0)
         bottomPoint = leftBottom.Y < rightBottom.Y and leftBottom or rightBottom
+    elseif leftLeg and rightLeg then
+        local leftBottom = leftLeg.Position - Vector3.new(0, leftLeg.Size.Y / 2, 0)
+        local rightBottom = rightLeg.Position - Vector3.new(0, rightLeg.Size.Y / 2, 0)
+        bottomPoint = leftBottom.Y < rightBottom.Y and leftBottom or rightBottom
     elseif lowerTorso then
         bottomPoint = lowerTorso.Position - Vector3.new(0, lowerTorso.Size.Y / 2, 0)
+    else
+        bottomPoint = root.Position - Vector3.new(0, 3, 0)
+    end
+    
+    if upperTorso then
+        local leftSide = upperTorso.Position - Vector3.new(upperTorso.Size.X / 2, 0, 0)
+        local rightSide = upperTorso.Position + Vector3.new(upperTorso.Size.X / 2, 0, 0)
+        leftPoint = leftSide
+        rightPoint = rightSide
+    else
+        leftPoint = root.Position - Vector3.new(1.5, 0, 0)
+        rightPoint = root.Position + Vector3.new(1.5, 0, 0)
     end
     
     local topScreen = camera:WorldToViewportPoint(topPoint)
     local bottomScreen = camera:WorldToViewportPoint(bottomPoint)
+    local leftScreen = camera:WorldToViewportPoint(leftPoint)
+    local rightScreen = camera:WorldToViewportPoint(rightPoint)
     
     if not (topScreen.Z > 0 and bottomScreen.Z > 0) then
         return nil, nil, nil, false
     end
     
     local height = math.abs(topScreen.Y - bottomScreen.Y)
-    local width = height * 0.5
-    local centerX = (topScreen.X + bottomScreen.X) / 2
+    local width = math.abs(rightScreen.X - leftScreen.X)
+    local centerX = (leftScreen.X + rightScreen.X) / 2
+    local centerY = (topScreen.Y + bottomScreen.Y) / 2
     
-    return Vector2.new(centerX, (topScreen.Y + bottomScreen.Y) / 2), width, height, true
+    if height < 5 or width < 5 then
+        return nil, nil, nil, false
+    end
+    
+    return Vector2.new(centerX, centerY), width, height, true
 end
 
 function ESPLibrary:clearPlayerDrawings(char)
@@ -111,19 +156,19 @@ function ESPLibrary:createDrawingsForPlayer(char)
     if self.drawings[char] then return end
     
     self.drawings[char] = {
-        box = createDrawing("Square", {Thickness = 1.5, Filled = false, Color = self.espColor, Visible = false}),
-        name = createDrawing("Text", {Size = 14, Color = Color3.new(1,1,1), Center = true, Outline = true, Font = 2, Visible = false}),
-        tracer = createDrawing("Line", {Thickness = 1.5, Color = self.tracerColor, Visible = false}),
+        box = createDrawing("Square", {Thickness = 1.5, Filled = false, Visible = false}),
+        name = createDrawing("Text", {Size = 14, Center = true, Outline = true, Font = 2, Visible = false}),
+        tracer = createDrawing("Line", {Thickness = 1.5, Visible = false}),
         healthBG = createDrawing("Square", {Thickness = 1, Filled = true, Color = Color3.new(0,0,0), Visible = false}),
-        healthMain = createDrawing("Square", {Thickness = 1, Filled = true, Color = self.healthBarColor, Visible = false}),
-        c1 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false}),
-        c2 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false}),
-        c3 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false}),
-        c4 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false}),
-        c5 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false}),
-        c6 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false}),
-        c7 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false}),
-        c8 = createDrawing("Line", {Thickness = 2, Color = self.espColor, Visible = false})
+        healthMain = createDrawing("Square", {Thickness = 1, Filled = true, Visible = false}),
+        c1 = createDrawing("Line", {Thickness = 2, Visible = false}),
+        c2 = createDrawing("Line", {Thickness = 2, Visible = false}),
+        c3 = createDrawing("Line", {Thickness = 2, Visible = false}),
+        c4 = createDrawing("Line", {Thickness = 2, Visible = false}),
+        c5 = createDrawing("Line", {Thickness = 2, Visible = false}),
+        c6 = createDrawing("Line", {Thickness = 2, Visible = false}),
+        c7 = createDrawing("Line", {Thickness = 2, Visible = false}),
+        c8 = createDrawing("Line", {Thickness = 2, Visible = false})
     }
 end
 
@@ -163,13 +208,15 @@ function ESPLibrary:update()
             continue
         end
         
+        local playerColor = self:getPlayerColor(player)
+        
         if self.espType == "2D Box" then
             d.box.Visible = true
             d.box.Size = Vector2.new(width, height)
             d.box.Position = Vector2.new(center.X - width/2, center.Y - height/2)
-            d.box.Color = self.espColor
+            d.box.Color = playerColor
         elseif self.espType == "Corner Box" then
-            local cs = width / 4
+            local cs = math.min(width / 4, 20)
             local px, py = center.X - width/2, center.Y - height/2
             
             d.c1.From, d.c1.To = Vector2.new(px, py), Vector2.new(px + cs, py)
@@ -184,14 +231,14 @@ function ESPLibrary:update()
             for i = 1, 8 do 
                 local ln = d["c"..i]
                 ln.Visible = true
-                ln.Color = self.espColor
+                ln.Color = playerColor
             end
         end
         
         if self.nameEsp then
             d.name.Visible = true
             d.name.Text = player.Name
-            d.name.Position = Vector2.new(center.X, center.Y + height/2 + 5)
+            d.name.Position = Vector2.new(center.X, center.Y - height/2 - 15)
             d.name.Color = self.nameColor
         end
         
