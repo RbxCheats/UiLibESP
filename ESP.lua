@@ -1,6 +1,6 @@
 -- ================================================================
--- Advanced ESP Library
--- Features: 2D Box, Corner Box, Name ESP, Tracers, Health Bar
+-- Universal ESP Library
+-- Dynamically detects all body parts for any rig type
 -- ================================================================
 
 local ESPLibrary = {}
@@ -13,7 +13,7 @@ local lp = Players.LocalPlayer
 
 local function createDrawing(class, props)
     local d = Drawing.new(class)
-    for k, v in pairs(props or {}) do 
+    for k, v in pairs(props or {}) do
         d[k] = v
     end
     return d
@@ -40,26 +40,23 @@ function ESPLibrary.new()
     return self
 end
 
-function ESPLibrary:getAllBodyParts(character)
+function ESPLibrary:scanAllBodyParts(character)
     local parts = {}
-    local partNames = {
-        "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
-        "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
-        "LeftHand", "RightHand", "LeftUpperLeg", "RightUpperLeg",
-        "LeftLowerLeg", "RightLowerLeg", "LeftFoot", "RightFoot"
-    }
     
-    for _, name in ipairs(partNames) do
-        local part = character:FindFirstChild(name)
-        if part then
-            table.insert(parts, part)
+    local function scanRecursive(instance)
+        if instance:IsA("BasePart") and instance.Transparency < 1 then
+            table.insert(parts, instance)
+        end
+        for _, child in ipairs(instance:GetChildren()) do
+            scanRecursive(child)
         end
     end
     
+    scanRecursive(character)
     return parts
 end
 
-function ESPLibrary:getBoundingBox(character)
+function ESPLibrary:getTrueBoundingBox(character)
     local camera = Workspace.CurrentCamera
     if not camera then return nil end
     
@@ -68,23 +65,8 @@ function ESPLibrary:getBoundingBox(character)
         return nil
     end
     
-    local parts = self:getAllBodyParts(character)
-    if #parts == 0 then
-        local root = character:FindFirstChild("HumanoidRootPart")
-        if root then
-            local pos, onScreen = camera:WorldToViewportPoint(root.Position)
-            if onScreen then
-                return {
-                    X = pos.X - 50,
-                    Y = pos.Y - 100,
-                    Width = 100,
-                    Height = 200,
-                    OnScreen = true,
-                    CenterX = pos.X,
-                    CenterY = pos.Y
-                }
-            end
-        end
+    local allParts = self:scanAllBodyParts(character)
+    if #allParts == 0 then
         return nil
     end
     
@@ -92,14 +74,19 @@ function ESPLibrary:getBoundingBox(character)
     local minY, maxY = math.huge, -math.huge
     local anyOnScreen = false
     
-    for _, part in ipairs(parts) do
-        local pos, onScreen = camera:WorldToViewportPoint(part.Position)
+    for _, part in ipairs(allParts) do
+        local position = part.Position
+        
+        local screenPos, onScreen = camera:WorldToViewportPoint(position)
+        
         if onScreen then
             anyOnScreen = true
-            minX = math.min(minX, pos.X)
-            maxX = math.max(maxX, pos.X)
-            minY = math.min(minY, pos.Y)
-            maxY = math.max(maxY, pos.Y)
+            local x, y = screenPos.X, screenPos.Y
+            
+            minX = math.min(minX, x)
+            maxX = math.max(maxX, x)
+            minY = math.min(minY, y)
+            maxY = math.max(maxY, y)
         end
     end
     
@@ -107,11 +94,10 @@ function ESPLibrary:getBoundingBox(character)
         return nil
     end
     
-    local padding = 5
-    minX = math.max(0, minX - padding)
-    minY = math.max(0, minY - padding)
-    maxX = math.min(camera.ViewportSize.X, maxX + padding)
-    maxY = math.min(camera.ViewportSize.Y, maxY + padding)
+    minX = math.max(0, minX - 5)
+    minY = math.max(0, minY - 5)
+    maxX = math.min(camera.ViewportSize.X, maxX + 5)
+    maxY = math.min(camera.ViewportSize.Y, maxY + 5)
     
     local width = maxX - minX
     local height = maxY - minY
@@ -180,8 +166,9 @@ function ESPLibrary:draw2DBox(drawings, bounds, color)
 end
 
 function ESPLibrary:drawCornerBox(drawings, bounds, color, distance)
-    local offset = math.clamp(1 / math.max(distance, 1) * 750, 10, 150)
-    local thickness = math.clamp(1 / math.max(distance, 1) * 100, 1, 3)
+    local safeDist = math.max(distance, 1)
+    local offset = math.clamp(1 / safeDist * 750, 10, 150)
+    local thickness = math.clamp(1 / safeDist * 100, 1, 3)
     
     local x, y = bounds.X, bounds.Y
     local w, h = bounds.Width, bounds.Height
@@ -211,6 +198,13 @@ function ESPLibrary:drawCornerBox(drawings, bounds, color, distance)
         line.Visible = true
         line.Color = color
         line.Thickness = thickness
+    end
+end
+
+function ESPLibrary:hideCornerBox(drawings)
+    for i = 1, 8 do
+        local line = drawings["c"..i]
+        if line then line.Visible = false end
     end
 end
 
@@ -260,11 +254,7 @@ function ESPLibrary:hideAllDrawings(drawings)
     if drawings.tracer then drawings.tracer.Visible = false end
     if drawings.healthBg then drawings.healthBg.Visible = false end
     if drawings.healthFill then drawings.healthFill.Visible = false end
-    
-    for i = 1, 8 do
-        local line = drawings["c"..i]
-        if line then line.Visible = false end
-    end
+    self:hideCornerBox(drawings)
 end
 
 function ESPLibrary:update()
@@ -291,9 +281,7 @@ function ESPLibrary:update()
         activeCharacters[character] = true
         
         local humanoid = character:FindFirstChildOfClass("Humanoid")
-        local root = character:FindFirstChild("HumanoidRootPart")
-        
-        if not humanoid or not root or humanoid.Health <= 0 then
+        if not humanoid or humanoid.Health <= 0 then
             if self.drawings[character] then
                 self:hideAllDrawings(self.drawings[character])
             end
@@ -302,21 +290,19 @@ function ESPLibrary:update()
         
         self:setupDrawings(character)
         local drawings = self.drawings[character]
-        local bounds = self:getBoundingBox(character)
+        local bounds = self:getTrueBoundingBox(character)
         
         if not bounds or not bounds.OnScreen then
             self:hideAllDrawings(drawings)
             goto continue
         end
         
-        local distance = (camera.CFrame.Position - root.Position).Magnitude
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        local distance = rootPart and (camera.CFrame.Position - rootPart.Position).Magnitude or 100
         local healthPercent = humanoid.Health / humanoid.MaxHealth
         
         if self.espType == "2D Box" then
-            for i = 1, 8 do
-                local line = drawings["c"..i]
-                if line then line.Visible = false end
-            end
+            self:hideCornerBox(drawings)
             self:draw2DBox(drawings, bounds, self.espColor)
         elseif self.espType == "Corner Box" then
             drawings.box.Visible = false
