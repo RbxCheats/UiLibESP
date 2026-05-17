@@ -1,6 +1,6 @@
 -- ================================================================
--- Standalone ESP Library
--- Supports: 2D Box, Corner Box, Name ESP, Tracers, Health Bar
+-- Advanced ESP Library
+-- Features: 2D Box, Corner Box, Name ESP, Tracers, Health Bar
 -- ================================================================
 
 local ESPLibrary = {}
@@ -14,11 +14,7 @@ local lp = Players.LocalPlayer
 local function createDrawing(class, props)
     local d = Drawing.new(class)
     for k, v in pairs(props or {}) do 
-        if type(v) == "Vector2" or type(v) == "Color3" then
-            d[k] = v
-        else
-            d[k] = v
-        end
+        d[k] = v
     end
     return d
 end
@@ -40,29 +36,21 @@ function ESPLibrary.new()
     
     self.drawings = {}
     self.renderConn = nil
-    self.currentEspType = "2D Box"
     
     return self
 end
 
 function ESPLibrary:getAllBodyParts(character)
     local parts = {}
-    
-    local bodyParts = {
-        "Head",
-        "UpperTorso",
-        "LowerTorso", 
-        "HumanoidRootPart",
-        "LeftUpperArm", "RightUpperArm",
-        "LeftLowerArm", "RightLowerArm",
-        "LeftHand", "RightHand",
-        "LeftUpperLeg", "RightUpperLeg",
-        "LeftLowerLeg", "RightLowerLeg",
-        "LeftFoot", "RightFoot"
+    local partNames = {
+        "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
+        "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+        "LeftHand", "RightHand", "LeftUpperLeg", "RightUpperLeg",
+        "LeftLowerLeg", "RightLowerLeg", "LeftFoot", "RightFoot"
     }
     
-    for _, partName in ipairs(bodyParts) do
-        local part = character:FindFirstChild(partName)
+    for _, name in ipairs(partNames) do
+        local part = character:FindFirstChild(name)
         if part then
             table.insert(parts, part)
         end
@@ -71,18 +59,33 @@ function ESPLibrary:getAllBodyParts(character)
     return parts
 end
 
-function ESPLibrary:getScreenBounds(char)
+function ESPLibrary:getBoundingBox(character)
     local camera = Workspace.CurrentCamera
-    if not camera then return nil, nil, nil, false, nil, nil, nil, nil end
+    if not camera then return nil end
     
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid or humanoid.Health <= 0 then
-        return nil, nil, nil, false
+        return nil
     end
     
-    local parts = self:getAllBodyParts(char)
+    local parts = self:getAllBodyParts(character)
     if #parts == 0 then
-        return nil, nil, nil, false
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local pos, onScreen = camera:WorldToViewportPoint(root.Position)
+            if onScreen then
+                return {
+                    X = pos.X - 50,
+                    Y = pos.Y - 100,
+                    Width = 100,
+                    Height = 200,
+                    OnScreen = true,
+                    CenterX = pos.X,
+                    CenterY = pos.Y
+                }
+            end
+        end
+        return nil
     end
     
     local minX, maxX = math.huge, -math.huge
@@ -90,32 +93,18 @@ function ESPLibrary:getScreenBounds(char)
     local anyOnScreen = false
     
     for _, part in ipairs(parts) do
-        local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+        local pos, onScreen = camera:WorldToViewportPoint(part.Position)
         if onScreen then
             anyOnScreen = true
-            minX = math.min(minX, screenPos.X)
-            maxX = math.max(maxX, screenPos.X)
-            minY = math.min(minY, screenPos.Y)
-            maxY = math.max(maxY, screenPos.Y)
+            minX = math.min(minX, pos.X)
+            maxX = math.max(maxX, pos.X)
+            minY = math.min(minY, pos.Y)
+            maxY = math.max(maxY, pos.Y)
         end
     end
     
     if not anyOnScreen then
-        local rootPart = char:FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            local screenPos, onScreen = camera:WorldToViewportPoint(rootPart.Position)
-            if onScreen then
-                anyOnScreen = true
-                minX = screenPos.X - 50
-                maxX = screenPos.X + 50
-                minY = screenPos.Y - 100
-                maxY = screenPos.Y + 50
-            end
-        end
-    end
-    
-    if not anyOnScreen then
-        return nil, nil, nil, false
+        return nil
     end
     
     local padding = 5
@@ -130,45 +119,48 @@ function ESPLibrary:getScreenBounds(char)
     local centerY = (minY + maxY) / 2
     
     if width < 2 or height < 2 then
-        return nil, nil, nil, false
+        return nil
     end
     
-    return Vector2.new(centerX, centerY), width, height, true, minX, minY, maxX, maxY
+    return {
+        X = minX,
+        Y = minY,
+        Width = width,
+        Height = height,
+        CenterX = centerX,
+        CenterY = centerY,
+        OnScreen = true
+    }
 end
 
-function ESPLibrary:clearPlayerDrawings(char)
-    local d = self.drawings[char]
-    if d then
-        if d.box then d.box.Visible = false end
-        if d.name then d.name.Visible = false end
-        if d.tracer then d.tracer.Visible = false end
-        if d.healthBG then d.healthBG.Visible = false end
-        if d.healthMain then d.healthMain.Visible = false end
-        
-        for i = 1, 8 do 
-            local ln = d["c"..i] 
-            if ln then 
-                ln.Visible = false 
-            end 
+function ESPLibrary:clearDrawings(character)
+    local d = self.drawings[character]
+    if not d then return end
+    
+    for _, drawing in pairs(d) do
+        if drawing then
+            drawing.Visible = false
         end
     end
 end
 
 function ESPLibrary:clearAllDrawings()
-    for char, _ in pairs(self.drawings) do
-        self:clearPlayerDrawings(char)
+    for character, drawings in pairs(self.drawings) do
+        self:clearDrawings(character)
     end
 end
 
-function ESPLibrary:createDrawingsForPlayer(char)
-    if self.drawings[char] then return end
+function ESPLibrary:setupDrawings(character)
+    if self.drawings[character] then
+        return
+    end
     
-    self.drawings[char] = {
+    self.drawings[character] = {
         box = createDrawing("Square", {Thickness = 1.5, Filled = false, Visible = false}),
         name = createDrawing("Text", {Size = 14, Center = true, Outline = true, Font = 2, Visible = false}),
         tracer = createDrawing("Line", {Thickness = 1.5, Visible = false}),
-        healthBG = createDrawing("Square", {Thickness = 1, Filled = true, Color = Color3.new(0,0,0), Visible = false}),
-        healthMain = createDrawing("Square", {Thickness = 1, Filled = true, Visible = false}),
+        healthBg = createDrawing("Square", {Thickness = 1, Filled = true, Color = Color3.fromRGB(0, 0, 0), Visible = false}),
+        healthFill = createDrawing("Square", {Thickness = 1, Filled = true, Visible = false}),
         c1 = createDrawing("Line", {Thickness = 2, Visible = false}),
         c2 = createDrawing("Line", {Thickness = 2, Visible = false}),
         c3 = createDrawing("Line", {Thickness = 2, Visible = false}),
@@ -180,6 +172,101 @@ function ESPLibrary:createDrawingsForPlayer(char)
     }
 end
 
+function ESPLibrary:draw2DBox(drawings, bounds, color)
+    drawings.box.Visible = true
+    drawings.box.Size = Vector2.new(bounds.Width, bounds.Height)
+    drawings.box.Position = Vector2.new(bounds.X, bounds.Y)
+    drawings.box.Color = color
+end
+
+function ESPLibrary:drawCornerBox(drawings, bounds, color, distance)
+    local offset = math.clamp(1 / math.max(distance, 1) * 750, 10, 150)
+    local thickness = math.clamp(1 / math.max(distance, 1) * 100, 1, 3)
+    
+    local x, y = bounds.X, bounds.Y
+    local w, h = bounds.Width, bounds.Height
+    
+    drawings.c1.From = Vector2.new(x, y)
+    drawings.c1.To = Vector2.new(x + offset, y)
+    drawings.c2.From = Vector2.new(x, y)
+    drawings.c2.To = Vector2.new(x, y + offset)
+    
+    drawings.c3.From = Vector2.new(x + w, y)
+    drawings.c3.To = Vector2.new(x + w - offset, y)
+    drawings.c4.From = Vector2.new(x + w, y)
+    drawings.c4.To = Vector2.new(x + w, y + offset)
+    
+    drawings.c5.From = Vector2.new(x, y + h)
+    drawings.c5.To = Vector2.new(x + offset, y + h)
+    drawings.c6.From = Vector2.new(x, y + h)
+    drawings.c6.To = Vector2.new(x, y + h - offset)
+    
+    drawings.c7.From = Vector2.new(x + w, y + h)
+    drawings.c7.To = Vector2.new(x + w - offset, y + h)
+    drawings.c8.From = Vector2.new(x + w, y + h)
+    drawings.c8.To = Vector2.new(x + w, y + h - offset)
+    
+    for i = 1, 8 do
+        local line = drawings["c"..i]
+        line.Visible = true
+        line.Color = color
+        line.Thickness = thickness
+    end
+end
+
+function ESPLibrary:drawName(drawings, playerName, bounds, color)
+    drawings.name.Visible = true
+    drawings.name.Text = playerName
+    drawings.name.Position = Vector2.new(bounds.CenterX, bounds.Y - 15)
+    drawings.name.Color = color
+end
+
+function ESPLibrary:drawHealthBar(drawings, healthPercent, bounds, color)
+    local barWidth = 4
+    local barHeight = bounds.Height * healthPercent
+    local barX = bounds.X + bounds.Width + 3
+    local barY = bounds.Y + bounds.Height - barHeight
+    
+    drawings.healthBg.Visible = true
+    drawings.healthBg.Size = Vector2.new(barWidth + 2, bounds.Height)
+    drawings.healthBg.Position = Vector2.new(barX - 1, bounds.Y)
+    
+    drawings.healthFill.Visible = true
+    drawings.healthFill.Size = Vector2.new(barWidth, barHeight)
+    drawings.healthFill.Position = Vector2.new(barX, barY)
+    
+    local healthColor = color
+    if healthPercent <= 0.3 then
+        healthColor = Color3.fromRGB(255, 50, 50)
+    elseif healthPercent <= 0.6 then
+        healthColor = Color3.fromRGB(255, 165, 0)
+    end
+    drawings.healthFill.Color = healthColor
+end
+
+function ESPLibrary:drawTracer(drawings, camera, bounds, color)
+    local screenBottom = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+    local targetPos = Vector2.new(bounds.CenterX, bounds.Y + bounds.Height)
+    
+    drawings.tracer.Visible = true
+    drawings.tracer.From = screenBottom
+    drawings.tracer.To = targetPos
+    drawings.tracer.Color = color
+end
+
+function ESPLibrary:hideAllDrawings(drawings)
+    if drawings.box then drawings.box.Visible = false end
+    if drawings.name then drawings.name.Visible = false end
+    if drawings.tracer then drawings.tracer.Visible = false end
+    if drawings.healthBg then drawings.healthBg.Visible = false end
+    if drawings.healthFill then drawings.healthFill.Visible = false end
+    
+    for i = 1, 8 do
+        local line = drawings["c"..i]
+        if line then line.Visible = false end
+    end
+end
+
 function ESPLibrary:update()
     if not self.enabled then
         self:clearAllDrawings()
@@ -189,140 +276,86 @@ function ESPLibrary:update()
     local camera = Workspace.CurrentCamera
     if not camera then return end
     
-    local currentCharacters = {}
+    local activeCharacters = {}
     
     for _, player in ipairs(Players:GetPlayers()) do
-        if self.ignoreLocal and player == lp then continue end
-        
-        local char = player.Character
-        if not char then continue end
-        
-        currentCharacters[char] = true
-        
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        
-        if not (hum and hum.Health > 0) then
-            self:clearPlayerDrawings(char)
-            continue
+        if self.ignoreLocal and player == lp then
+            goto continue
         end
         
-        self:createDrawingsForPlayer(char)
-        local d = self.drawings[char]
-        local center, width, height, onScreen, minX, minY, maxX, maxY = self:getScreenBounds(char)
-        
-        if not onScreen then 
-            self:clearPlayerDrawings(char)
-            continue
+        local character = player.Character
+        if not character then
+            goto continue
         end
+        
+        activeCharacters[character] = true
+        
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local root = character:FindFirstChild("HumanoidRootPart")
+        
+        if not humanoid or not root or humanoid.Health <= 0 then
+            if self.drawings[character] then
+                self:hideAllDrawings(self.drawings[character])
+            end
+            goto continue
+        end
+        
+        self:setupDrawings(character)
+        local drawings = self.drawings[character]
+        local bounds = self:getBoundingBox(character)
+        
+        if not bounds or not bounds.OnScreen then
+            self:hideAllDrawings(drawings)
+            goto continue
+        end
+        
+        local distance = (camera.CFrame.Position - root.Position).Magnitude
+        local healthPercent = humanoid.Health / humanoid.MaxHealth
         
         if self.espType == "2D Box" then
-            if self.currentEspType ~= "2D Box" then
-                for i = 1, 8 do
-                    local ln = d["c"..i]
-                    if ln then ln.Visible = false end
-                end
+            for i = 1, 8 do
+                local line = drawings["c"..i]
+                if line then line.Visible = false end
             end
-            d.box.Visible = true
-            d.box.Size = Vector2.new(width, height)
-            d.box.Position = Vector2.new(minX, minY)
-            d.box.Color = self.espColor
-            self.currentEspType = "2D Box"
+            self:draw2DBox(drawings, bounds, self.espColor)
         elseif self.espType == "Corner Box" then
-            if self.currentEspType ~= "Corner Box" then
-                d.box.Visible = false
-            end
-            
-            local root = char:FindFirstChild("HumanoidRootPart")
-            local distance = root and (camera.CFrame.Position - root.Position).Magnitude or 100
-            local offset = math.clamp(1 / distance * 750, 2, 300)
-            
-            local topLeft = Vector2.new(minX, minY)
-            local topRight = Vector2.new(maxX, minY)
-            local bottomLeft = Vector2.new(minX, maxY)
-            local bottomRight = Vector2.new(maxX, maxY)
-            
-            d.c1.From = topLeft
-            d.c1.To = Vector2.new(topLeft.X + offset, topLeft.Y)
-            d.c2.From = topLeft
-            d.c2.To = Vector2.new(topLeft.X, topLeft.Y + offset)
-            
-            d.c3.From = topRight
-            d.c3.To = Vector2.new(topRight.X - offset, topRight.Y)
-            d.c4.From = topRight
-            d.c4.To = Vector2.new(topRight.X, topRight.Y + offset)
-            
-            d.c5.From = bottomLeft
-            d.c5.To = Vector2.new(bottomLeft.X + offset, bottomLeft.Y)
-            d.c6.From = bottomLeft
-            d.c6.To = Vector2.new(bottomLeft.X, bottomLeft.Y - offset)
-            
-            d.c7.From = bottomRight
-            d.c7.To = Vector2.new(bottomRight.X - offset, bottomRight.Y)
-            d.c8.From = bottomRight
-            d.c8.To = Vector2.new(bottomRight.X, bottomRight.Y - offset)
-            
-            for i = 1, 8 do 
-                local ln = d["c"..i]
-                ln.Visible = true
-                ln.Color = self.espColor
-                ln.Thickness = math.clamp(1 / distance * 100, 1, 3)
-            end
-            self.currentEspType = "Corner Box"
+            drawings.box.Visible = false
+            self:drawCornerBox(drawings, bounds, self.espColor, distance)
         end
         
         if self.nameEsp then
-            d.name.Visible = true
-            d.name.Text = player.Name
-            d.name.Position = Vector2.new(center.X, minY - 15)
-            d.name.Color = self.nameColor
+            self:drawName(drawings, player.Name, bounds, self.nameColor)
         else
-            d.name.Visible = false
+            drawings.name.Visible = false
         end
         
         if self.healthBar then
-            local barW = 4
-            local hp = hum.Health / hum.MaxHealth
-            local hH = hp * height
-            
-            d.healthBG.Visible = true
-            d.healthBG.Size = Vector2.new(barW + 2, height)
-            d.healthBG.Position = Vector2.new(maxX + 3, minY)
-            
-            d.healthMain.Visible = true
-            d.healthMain.Size = Vector2.new(barW, hH)
-            d.healthMain.Position = Vector2.new(maxX + 4, minY + height - hH)
-            
-            local healthColor = self.healthBarColor
-            if hp <= 0.3 then
-                healthColor = Color3.fromRGB(255, 50, 50)
-            elseif hp <= 0.6 then
-                healthColor = Color3.fromRGB(255, 165, 0)
-            end
-            d.healthMain.Color = healthColor
+            self:drawHealthBar(drawings, healthPercent, bounds, self.healthBarColor)
         else
-            if d.healthBG then d.healthBG.Visible = false end
-            if d.healthMain then d.healthMain.Visible = false end
+            if drawings.healthBg then drawings.healthBg.Visible = false end
+            if drawings.healthFill then drawings.healthFill.Visible = false end
         end
         
         if self.tracers then
-            d.tracer.Visible = true
-            d.tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-            d.tracer.To = Vector2.new(center.X, maxY)
-            d.tracer.Color = self.tracerColor
+            self:drawTracer(drawings, camera, bounds, self.tracerColor)
         else
-            if d.tracer then d.tracer.Visible = false end
+            if drawings.tracer then drawings.tracer.Visible = false end
         end
+        
+        ::continue::
     end
     
-    for char, _ in pairs(self.drawings) do
-        if not currentCharacters[char] then
-            self:clearPlayerDrawings(char)
+    for character, drawings in pairs(self.drawings) do
+        if not activeCharacters[character] then
+            self:hideAllDrawings(drawings)
         end
     end
 end
 
 function ESPLibrary:start()
-    if self.renderConn then return end
+    if self.renderConn then
+        self.renderConn:Disconnect()
+    end
     self.renderConn = RunService.RenderStepped:Connect(function()
         self:update()
     end)
@@ -338,7 +371,7 @@ end
 
 function ESPLibrary:destroy()
     self:stop()
-    for char, drawings in pairs(self.drawings) do
+    for character, drawings in pairs(self.drawings) do
         for _, drawing in pairs(drawings) do
             if drawing and drawing.Remove then
                 drawing:Remove()
