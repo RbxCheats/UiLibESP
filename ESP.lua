@@ -989,4 +989,667 @@ function ESP:UpdatePlayer(player)
         end
         if data.Components.Name then
             if data.Components.Name.Main then data.Components.Name.Main.Visible = false end
-            if data.Components
+            if data.Components.Name.Outline then data.Components.Name.Outline.Visible = false end
+        end
+        if data.Components.Distance then
+            if data.Components.Distance.Main then data.Components.Distance.Main.Visible = false end
+            if data.Components.Distance.Outline then data.Components.Distance.Outline.Visible = false end
+        end
+    else
+        -- Calculate distance and fade
+        local distance = Utilities:GetDistance(rootPart.Position, Camera.CFrame.Position)
+        local distanceFormatted = Utilities:FormatDistance(distance)
+        local transparency = 1
+        
+        if self.Settings.TransparencyFade and distance > self.Settings.FadeDistance then
+            transparency = 1 - self:Clamp((distance - self.Settings.FadeDistance) / (self.Settings.MaxDistance - self.Settings.FadeDistance), 0, 1)
+        end
+        
+        -- Visibility check
+        local isVisible = self:IsVisible(player)
+        if self.Settings.VisibleCheck and not isVisible and self.Settings.CullBehindWalls then
+            transparency = transparency * 0.3
+        end
+        
+        -- Get player color based on priority/enemy/team
+        local playerColor = self:GetColorForPlayer(player)
+        local health, maxHealth = self:GetHealth(player)
+        local armor, maxArmor = self:GetArmor(player)
+        
+        -- Draw Box
+        if self.Settings.BoxEnabled and screenBounds.OnScreen then
+            if not data.Components.Box then
+                data.Components.Box = self:DrawBox(screenBounds, playerColor, transparency)
+            else
+                data.Components.Box.Box.Size = screenBounds.Size
+                data.Components.Box.Box.Position = screenBounds.Position
+                data.Components.Box.Box.Color = playerColor
+                data.Components.Box.Box.Transparency = 1 - transparency
+                
+                if data.Components.Box.Outline then
+                    data.Components.Box.Outline.Size = screenBounds.Size
+                    data.Components.Box.Outline.Position = screenBounds.Position - Vector2.new(1, 1)
+                    data.Components.Box.Outline.Transparency = 1 - transparency
+                end
+                
+                if data.Components.Box.Fill then
+                    data.Components.Box.Fill.Size = screenBounds.Size
+                    data.Components.Box.Fill.Position = screenBounds.Position
+                    data.Components.Box.Fill.Transparency = 1 - (self.Settings.BoxFillTransparency * transparency)
+                end
+            end
+            data.Components.Box.Box.Visible = true
+            if data.Components.Box.Outline then data.Components.Box.Outline.Visible = true end
+            if data.Components.Box.Fill then data.Components.Box.Fill.Visible = true end
+        elseif data.Components.Box then
+            data.Components.Box.Box.Visible = false
+            if data.Components.Box.Outline then data.Components.Box.Outline.Visible = false end
+            if data.Components.Box.Fill then data.Components.Box.Fill.Visible = false end
+        end
+        
+        -- Draw Health Bar
+        if self.Settings.HealthBarEnabled and screenBounds.OnScreen then
+            if not data.Components.HealthBar then
+                data.Components.HealthBar = self:DrawHealthBar(screenBounds, health, maxHealth, transparency)
+            else
+                -- Update health bar position and size
+                local barWidth = self.Settings.HealthBarWidth
+                local healthPercent = health / maxHealth
+                local color = Utilities:ColorLerp(self.Settings.HealthBarLowColor, self.Settings.HealthBarColor, healthPercent)
+                
+                if self.Settings.HealthBarPosition == "Left" then
+                    data.Components.HealthBar.Fill.Position = Vector2.new(
+                        screenBounds.Position.X - barWidth - 2,
+                        screenBounds.Position.Y + screenBounds.Size.Y * (1 - healthPercent)
+                    )
+                    data.Components.HealthBar.Fill.Size = Vector2.new(barWidth, screenBounds.Size.Y * healthPercent)
+                    
+                    if data.Components.HealthBar.Background then
+                        data.Components.HealthBar.Background.Position = Vector2.new(screenBounds.Position.X - barWidth - 2, screenBounds.Position.Y)
+                        data.Components.HealthBar.Background.Size = Vector2.new(barWidth, screenBounds.Size.Y)
+                    end
+                elseif self.Settings.HealthBarPosition == "Right" then
+                    data.Components.HealthBar.Fill.Position = Vector2.new(
+                        screenBounds.Position.X + screenBounds.Size.X + 2,
+                        screenBounds.Position.Y + screenBounds.Size.Y * (1 - healthPercent)
+                    )
+                    data.Components.HealthBar.Fill.Size = Vector2.new(barWidth, screenBounds.Size.Y * healthPercent)
+                    
+                    if data.Components.HealthBar.Background then
+                        data.Components.HealthBar.Background.Position = Vector2.new(screenBounds.Position.X + screenBounds.Size.X + 2, screenBounds.Position.Y)
+                        data.Components.HealthBar.Background.Size = Vector2.new(barWidth, screenBounds.Size.Y)
+                    end
+                elseif self.Settings.HealthBarPosition == "Top" then
+                    data.Components.HealthBar.Fill.Position = screenBounds.Position
+                    data.Components.HealthBar.Fill.Size = Vector2.new(screenBounds.Size.X * healthPercent, barWidth)
+                    
+                    if data.Components.HealthBar.Background then
+                        data.Components.HealthBar.Background.Position = Vector2.new(screenBounds.Position.X, screenBounds.Position.Y - barWidth - 2)
+                        data.Components.HealthBar.Background.Size = Vector2.new(screenBounds.Size.X, barWidth)
+                    end
+                elseif self.Settings.HealthBarPosition == "Bottom" then
+                    data.Components.HealthBar.Fill.Position = screenBounds.Position
+                    data.Components.HealthBar.Fill.Size = Vector2.new(screenBounds.Size.X * healthPercent, barWidth)
+                    
+                    if data.Components.HealthBar.Background then
+                        data.Components.HealthBar.Background.Position = Vector2.new(screenBounds.Position.X, screenBounds.Position.Y + screenBounds.Size.Y + 2)
+                        data.Components.HealthBar.Background.Size = Vector2.new(screenBounds.Size.X, barWidth)
+                    end
+                end
+                
+                data.Components.HealthBar.Fill.Color = color
+                data.Components.HealthBar.Fill.Transparency = 1 - transparency
+                if data.Components.HealthBar.Background then
+                    data.Components.HealthBar.Background.Transparency = 1 - (transparency * 0.7)
+                end
+            end
+            
+            data.Components.HealthBar.Fill.Visible = true
+            if data.Components.HealthBar.Background then data.Components.HealthBar.Background.Visible = true end
+        elseif data.Components.HealthBar then
+            if data.Components.HealthBar.Fill then data.Components.HealthBar.Fill.Visible = false end
+            if data.Components.HealthBar.Background then data.Components.HealthBar.Background.Visible = false end
+        end
+        
+        -- Draw Armor Bar
+        if self.Settings.ArmorBarEnabled and screenBounds.OnScreen then
+            if not data.Components.ArmorBar then
+                data.Components.ArmorBar = self:DrawArmorBar(screenBounds, armor, maxArmor, transparency)
+            else
+                -- Update armor bar
+                local barWidth = self.Settings.ArmorBarWidth
+                local armorPercent = armor / maxArmor
+                
+                if self.Settings.ArmorBarPosition == "Left" then
+                    local offset = self.Settings.HealthBarEnabled and (barWidth + 4) or 0
+                    data.Components.ArmorBar.Fill.Position = Vector2.new(
+                        screenBounds.Position.X - barWidth - 2 - offset,
+                        screenBounds.Position.Y + screenBounds.Size.Y * (1 - armorPercent)
+                    )
+                    data.Components.ArmorBar.Fill.Size = Vector2.new(barWidth, screenBounds.Size.Y * armorPercent)
+                    
+                    if data.Components.ArmorBar.Background then
+                        data.Components.ArmorBar.Background.Position = Vector2.new(screenBounds.Position.X - barWidth - 2 - offset, screenBounds.Position.Y)
+                        data.Components.ArmorBar.Background.Size = Vector2.new(barWidth, screenBounds.Size.Y)
+                    end
+                elseif self.Settings.ArmorBarPosition == "Right" then
+                    local offset = self.Settings.HealthBarEnabled and (barWidth + 4) or 0
+                    data.Components.ArmorBar.Fill.Position = Vector2.new(
+                        screenBounds.Position.X + screenBounds.Size.X + 2 + offset,
+                        screenBounds.Position.Y + screenBounds.Size.Y * (1 - armorPercent)
+                    )
+                    data.Components.ArmorBar.Fill.Size = Vector2.new(barWidth, screenBounds.Size.Y * armorPercent)
+                    
+                    if data.Components.ArmorBar.Background then
+                        data.Components.ArmorBar.Background.Position = Vector2.new(screenBounds.Position.X + screenBounds.Size.X + 2 + offset, screenBounds.Position.Y)
+                        data.Components.ArmorBar.Background.Size = Vector2.new(barWidth, screenBounds.Size.Y)
+                    end
+                end
+                
+                data.Components.ArmorBar.Fill.Transparency = 1 - transparency
+                if data.Components.ArmorBar.Background then
+                    data.Components.ArmorBar.Background.Transparency = 1 - (transparency * 0.7)
+                end
+            end
+            
+            data.Components.ArmorBar.Fill.Visible = true
+            if data.Components.ArmorBar.Background then data.Components.ArmorBar.Background.Visible = true end
+        elseif data.Components.ArmorBar then
+            if data.Components.ArmorBar.Fill then data.Components.ArmorBar.Fill.Visible = false end
+            if data.Components.ArmorBar.Background then data.Components.ArmorBar.Background.Visible = false end
+        end
+        
+        -- Draw Name
+        if self.Settings.NameEnabled and screenBounds.OnScreen then
+            local playerName = player.Name
+            if self.Settings.NameShorten and #playerName > self.Settings.NameMaxLength then
+                playerName = string.sub(playerName, 1, self.Settings.NameMaxLength) .. ".."
+            end
+            
+            local namePosition
+            if self.Settings.NamePosition == "Top" then
+                namePosition = Vector2.new(
+                    screenBounds.Position.X + screenBounds.Size.X / 2,
+                    screenBounds.Position.Y - 5
+                )
+            elseif self.Settings.NamePosition == "Bottom" then
+                namePosition = Vector2.new(
+                    screenBounds.Position.X + screenBounds.Size.X / 2,
+                    screenBounds.Position.Y + screenBounds.Size.Y + 5
+                )
+            elseif self.Settings.NamePosition == "Left" then
+                namePosition = Vector2.new(
+                    screenBounds.Position.X - 5,
+                    screenBounds.Position.Y + screenBounds.Size.Y / 2
+                )
+            elseif self.Settings.NamePosition == "Right" then
+                namePosition = Vector2.new(
+                    screenBounds.Position.X + screenBounds.Size.X + 5,
+                    screenBounds.Position.Y + screenBounds.Size.Y / 2
+                )
+            end
+            
+            if not data.Components.Name then
+                data.Components.Name = self:DrawText(playerName, namePosition, playerColor, self.Settings.NameOutlineColor, transparency, true)
+            else
+                data.Components.Name.Main.Text = playerName
+                data.Components.Name.Main.Position = namePosition
+                data.Components.Name.Main.Color = playerColor
+                data.Components.Name.Main.Transparency = 1 - transparency
+                
+                if data.Components.Name.Outline then
+                    data.Components.Name.Outline.Text = playerName
+                    data.Components.Name.Outline.Position = namePosition + Vector2.new(1, 1)
+                    data.Components.Name.Outline.Transparency = 1 - transparency
+                end
+            end
+            data.Components.Name.Main.Visible = true
+            if data.Components.Name.Outline then data.Components.Name.Outline.Visible = true end
+        elseif data.Components.Name then
+            if data.Components.Name.Main then data.Components.Name.Main.Visible = false end
+            if data.Components.Name.Outline then data.Components.Name.Outline.Visible = false end
+        end
+        
+        -- Draw Distance
+        if self.Settings.DistanceEnabled and screenBounds.OnScreen then
+            local distancePosition
+            if self.Settings.DistancePosition == "Top" then
+                distancePosition = Vector2.new(
+                    screenBounds.Position.X + screenBounds.Size.X / 2,
+                    screenBounds.Position.Y - 20
+                )
+            elseif self.Settings.DistancePosition == "Bottom" then
+                distancePosition = Vector2.new(
+                    screenBounds.Position.X + screenBounds.Size.X / 2,
+                    screenBounds.Position.Y + screenBounds.Size.Y + 18
+                )
+            end
+            
+            if not data.Components.Distance then
+                data.Components.Distance = self:DrawDistance(distanceFormatted, distancePosition, self.Settings.DistanceColor, self.Settings.DistanceOutlineColor, transparency, true)
+            else
+                local distanceText = self.Settings.DistanceUnits == "Meters" and 
+                                     string.format("%dm", distanceFormatted.Meters) or 
+                                     string.format("%d", distanceFormatted.Studs)
+                
+                data.Components.Distance.Main.Text = distanceText
+                data.Components.Distance.Main.Position = distancePosition
+                data.Components.Distance.Main.Transparency = 1 - transparency
+                
+                if data.Components.Distance.Outline then
+                    data.Components.Distance.Outline.Text = distanceText
+                    data.Components.Distance.Outline.Position = distancePosition + Vector2.new(1, 1)
+                    data.Components.Distance.Outline.Transparency = 1 - transparency
+                end
+            end
+            data.Components.Distance.Main.Visible = true
+            if data.Components.Distance.Outline then data.Components.Distance.Outline.Visible = true end
+        elseif data.Components.Distance then
+            if data.Components.Distance.Main then data.Components.Distance.Main.Visible = false end
+            if data.Components.Distance.Outline then data.Components.Distance.Outline.Visible = false end
+        end
+        
+        -- Draw Tracers
+        if self.Settings.TracerEnabled and screenBounds.OnScreen then
+            if not data.Components.Tracer then
+                data.Components.Tracer = self:DrawTracer(rootPart.Position, self.Settings.TracerFrom, playerColor, self.Settings.TracerThickness, transparency)
+            else
+                data.Components.Tracer.From = self.Settings.TracerFrom == "Bottom" and 
+                                              Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y) or
+                                              (self.Settings.TracerFrom == "Top" and 
+                                               Vector2.new(Camera.ViewportSize.X / 2, 0) or
+                                               Camera.ViewportSize / 2)
+                
+                local worldPos, _ = Camera:WorldToViewportPoint(rootPart.Position)
+                data.Components.Tracer.To = Vector2.new(worldPos.X, worldPos.Y)
+                data.Components.Tracer.Color = playerColor
+                data.Components.Tracer.Transparency = 1 - transparency
+            end
+            data.Components.Tracer.Visible = true
+        elseif data.Components.Tracer then
+            data.Components.Tracer.Visible = false
+        end
+        
+        -- Draw Snaplines
+        if self.Settings.SnaplineEnabled and screenBounds.OnScreen then
+            if not data.Components.Snapline then
+                data.Components.Snapline = self:DrawSnapline(rootPart.Position, playerColor, self.Settings.SnaplineThickness, transparency)
+            else
+                local worldPos, _ = Camera:WorldToViewportPoint(rootPart.Position)
+                data.Components.Snapline.To = Vector2.new(worldPos.X, worldPos.Y)
+                data.Components.Snapline.Color = playerColor
+                data.Components.Snapline.Transparency = 1 - transparency
+            end
+            data.Components.Snapline.Visible = true
+        elseif data.Components.Snapline then
+            data.Components.Snapline.Visible = false
+        end
+        
+        -- Draw Off-screen Arrow
+        if self.Settings.ArrowEnabled and not screenBounds.OnScreen then
+            if not data.Components.Arrow then
+                data.Components.Arrow = self:DrawOffscreenArrow(rootPart.Position, playerColor, transparency)
+            else
+                -- Update arrow position based on new player position
+                local screenCenter = Camera.ViewportSize / 2
+                local worldPos, _ = Camera:WorldToViewportPoint(rootPart.Position)
+                local direction = (Vector2.new(worldPos.X, worldPos.Y) - screenCenter).Unit
+                local arrowPos = screenCenter + direction * self.Settings.ArrowRadius
+                
+                arrowPos = Vector2.new(
+                    self:Clamp(arrowPos.X, self.Settings.ArrowSize, Camera.ViewportSize.X - self.Settings.ArrowSize),
+                    self:Clamp(arrowPos.Y, self.Settings.ArrowSize, Camera.ViewportSize.Y - self.Settings.ArrowSize)
+                )
+                
+                local angle = math.atan2(direction.Y, direction.X)
+                local arrowSize = self.Settings.ArrowSize
+                
+                data.Components.Arrow.PointA = arrowPos + Vector2.new(math.cos(angle) * arrowSize, math.sin(angle) * arrowSize)
+                data.Components.Arrow.PointB = arrowPos + Vector2.new(math.cos(angle + 2.2) * (arrowSize * 0.6), math.sin(angle + 2.2) * (arrowSize * 0.6))
+                data.Components.Arrow.PointC = arrowPos + Vector2.new(math.cos(angle - 2.2) * (arrowSize * 0.6), math.sin(angle - 2.2) * (arrowSize * 0.6))
+                data.Components.Arrow.Color = playerColor
+                data.Components.Arrow.Transparency = 1 - transparency
+            end
+            data.Components.Arrow.Visible = true
+        elseif data.Components.Arrow then
+            data.Components.Arrow.Visible = false
+        end
+    end
+    
+    -- Update Chams/Highlight
+    if self.Settings.ChamsEnabled then
+        local isVisible = self:IsVisible(player)
+        if (not self.Settings.ChamsVisibleOnly or isVisible) and self:IsAlive(player) then
+            if not data.Chams then
+                data.Chams = Instance.new("Highlight")
+                data.Chams.Parent = CoreGui
+            end
+            
+            data.Chams.Adornee = character
+            data.Chams.Enabled = true
+            data.Chams.FillColor = self.Settings.ChamsFillColor
+            data.Chams.OutlineColor = self.Settings.ChamsOutlineColor
+            data.Chams.FillTransparency = self.Settings.ChamsFillTransparency
+            data.Chams.OutlineTransparency = self.Settings.ChamsOutlineTransparency
+            data.Chams.DepthMode = self.Settings.ChamsDepthMode == "AlwaysOnTop" and 
+                                   Enum.HighlightDepthMode.AlwaysOnTop or 
+                                   Enum.HighlightDepthMode.Occluded
+        elseif data.Chams then
+            data.Chams.Enabled = false
+        end
+    elseif data and data.Chams then
+        data.Chams.Enabled = false
+    end
+    
+    -- Track position for trails
+    if self.Settings.TrailEnabled and self:IsAlive(player) then
+        if not data.TrailPoints then
+            data.TrailPoints = {}
+        end
+        
+        table.insert(data.TrailPoints, 1, rootPart.Position)
+        
+        -- Limit trail length
+        while #data.TrailPoints > self.Settings.TrailLength do
+            table.remove(data.TrailPoints)
+        end
+        
+        -- Draw trail
+        if not data.Components.Trail then
+            data.Components.Trail = {}
+        end
+        
+        -- Clear old trail drawings
+        for _, trail in pairs(data.Components.Trail) do
+            if trail and trail.Remove then
+                trail:Remove()
+            end
+        end
+        data.Components.Trail = {}
+        
+        -- Draw new trail
+        for i = 1, #data.TrailPoints - 1 do
+            local startPoint = data.TrailPoints[i]
+            local endPoint = data.TrailPoints[i + 1]
+            
+            local startScreen, startOn = Camera:WorldToViewportPoint(startPoint)
+            local endScreen, endOn = Camera:WorldToViewportPoint(endPoint)
+            
+            if startOn and endOn then
+                local trailAlpha = 1 - (i / #data.TrailPoints) * self.Settings.TrailTransparency
+                local trail = self:CreateDrawing("Line", {
+                    From = Vector2.new(startScreen.X, startScreen.Y),
+                    To = Vector2.new(endScreen.X, endScreen.Y),
+                    Color = self.Settings.TrailColor,
+                    Thickness = 1,
+                    Visible = true,
+                    Transparency = 1 - trailAlpha
+                })
+                table.insert(data.Components.Trail, trail)
+            end
+        end
+    elseif data and data.Components.Trail then
+        for _, trail in pairs(data.Components.Trail) do
+            if trail then
+                trail.Visible = false
+            end
+        end
+    end
+end
+
+-- ============================================================================
+-- Object ESP (for non-player entities)
+-- ============================================================================
+
+function ESP:AddObject(name, primaryPart, options)
+    options = options or {}
+    
+    local objectData = {
+        Name = name,
+        PrimaryPart = primaryPart,
+        Options = options,
+        Components = {}
+    }
+    
+    table.insert(self.Objects, objectData)
+    return objectData
+end
+
+function ESP:RemoveObject(object)
+    for i, obj in pairs(self.Objects) do
+        if obj == object then
+            -- Destroy components
+            for _, component in pairs(obj.Components) do
+                if component and component.Remove then
+                    component:Remove()
+                end
+            end
+            table.remove(self.Objects, i)
+            break
+        end
+    end
+end
+
+function ESP:UpdateObject(object)
+    if not self.Settings.Enabled or not object.PrimaryPart then
+        if object.Components.Name then object.Components.Name.Visible = false end
+        if object.Components.Distance then object.Components.Distance.Visible = false end
+        return
+    end
+    
+    local pos, onScreen = Camera:WorldToViewportPoint(object.PrimaryPart.Position)
+    local distance = Utilities:GetDistance(object.PrimaryPart.Position, Camera.CFrame.Position)
+    local distanceFormatted = Utilities:FormatDistance(distance)
+    
+    if onScreen and distance < self.Settings.MaxDistanceObjects then
+        -- Draw name
+        if not object.Components.Name then
+            local nameText = object.Name
+            if object.Options.Shorten and #nameText > (object.Options.MaxLength or 10) then
+                nameText = string.sub(nameText, 1, object.Options.MaxLength or 10) .. ".."
+            end
+            
+            object.Components.Name = self:CreateDrawing("Text", {
+                Text = nameText,
+                Position = Vector2.new(pos.X, pos.Y - 20),
+                Color = object.Options.Color or Color3.new(1, 1, 1),
+                Font = self.Settings.NameFont,
+                Size = self.Settings.NameSize,
+                Center = true,
+                Visible = true
+            })
+        else
+            object.Components.Name.Position = Vector2.new(pos.X, pos.Y - 20)
+        end
+        
+        -- Draw distance
+        if object.Options.ShowDistance then
+            if not object.Components.Distance then
+                local distanceText = string.format("%dm", distanceFormatted.Meters)
+                object.Components.Distance = self:CreateDrawing("Text", {
+                    Text = distanceText,
+                    Position = Vector2.new(pos.X, pos.Y - 5),
+                    Color = object.Options.DistanceColor or Color3.new(0.7, 0.7, 0.7),
+                    Font = self.Settings.NameFont,
+                    Size = self.Settings.NameSize - 2,
+                    Center = true,
+                    Visible = true
+                })
+            else
+                object.Components.Distance.Position = Vector2.new(pos.X, pos.Y - 5)
+                object.Components.Distance.Text = string.format("%dm", distanceFormatted.Meters)
+            end
+            object.Components.Distance.Visible = true
+        elseif object.Components.Distance then
+            object.Components.Distance.Visible = false
+        end
+        
+        object.Components.Name.Visible = true
+    else
+        if object.Components.Name then object.Components.Name.Visible = false end
+        if object.Components.Distance then object.Components.Distance.Visible = false end
+    end
+end
+
+-- ============================================================================
+-- Main Update Loop
+-- ============================================================================
+
+function ESP:Update()
+    -- Rate limiting
+    if self.Settings.UpdateRate > 0 then
+        local now = tick()
+        if now - self.LastUpdate < 1 / self.Settings.UpdateRate then
+            return
+        end
+        self.LastUpdate = now
+    end
+    
+    -- Update all players
+    local playerCount = 0
+    for _, player in pairs(Players:GetPlayers()) do
+        if playerCount >= self.Settings.MaxPlayers then break end
+        if player ~= LocalPlayer then
+            self:UpdatePlayer(player)
+            playerCount = playerCount + 1
+        end
+    end
+    
+    -- Update all objects
+    for _, object in pairs(self.Objects) do
+        self:UpdateObject(object)
+    end
+end
+
+-- ============================================================================
+-- Control Methods
+-- ============================================================================
+
+function ESP:Enable()
+    self.Settings.Enabled = true
+    if not self.RenderConnection then
+        self.RenderConnection = RunService.RenderStepped:Connect(function()
+            self:Update()
+        end)
+    end
+end
+
+function ESP:Disable()
+    self.Settings.Enabled = false
+    if self.RenderConnection then
+        self.RenderConnection:Disconnect()
+        self.RenderConnection = nil
+    end
+    
+    -- Clean up all drawings
+    self.DrawingManager:DestroyAll()
+    
+    -- Clean up chams
+    for _, data in pairs(self.Players) do
+        if data.Chams then
+            data.Chams.Enabled = false
+        end
+    end
+end
+
+function ESP:Toggle()
+    if self.Settings.Enabled then
+        self:Disable()
+    else
+        self:Enable()
+    end
+    return self.Settings.Enabled
+end
+
+function ESP:Destroy()
+    self:Disable()
+    
+    -- Clean up all player data
+    for player, _ in pairs(self.Players) do
+        self:RemovePlayer(player)
+    end
+    
+    -- Clean up objects
+    for _, object in pairs(self.Objects) do
+        self:RemoveObject(object)
+    end
+    
+    self.Players = {}
+    self.Objects = {}
+end
+
+-- ============================================================================
+-- Configuration Methods
+-- ============================================================================
+
+function ESP:SetSetting(key, value)
+    if self.Settings[key] ~= nil then
+        self.Settings[key] = value
+    end
+end
+
+function ESP:GetSetting(key)
+    return self.Settings[key]
+end
+
+function ESP:LoadConfig(config)
+    for key, value in pairs(config) do
+        if self.Settings[key] ~= nil then
+            self.Settings[key] = value
+        end
+    end
+end
+
+function ESP:SaveConfig()
+    local config = {}
+    for key, value in pairs(self.Settings) do
+        -- Skip function references and internal tables
+        if type(value) ~= "function" and key ~= "OverrideGetTeam" and 
+           key ~= "OverrideGetCharacter" and key ~= "OverrideGetTool" and
+           key ~= "OverrideGetHealth" and key ~= "OverrideGetArmor" and
+           key ~= "OverrideGetPriority" and key ~= "OverrideIsVisible" then
+            config[key] = value
+        end
+    end
+    return config
+end
+
+-- ============================================================================
+-- Priority Management
+-- ============================================================================
+
+function ESP:AddPriority(player)
+    if type(player) == "string" then
+        table.insert(self.Settings.PriorityPlayers, player)
+    elseif player.Name then
+        table.insert(self.Settings.PriorityPlayers, player)
+    end
+end
+
+function ESP:RemovePriority(player)
+    for i, priority in pairs(self.Settings.PriorityPlayers) do
+        if priority == player or priority == player.Name then
+            table.remove(self.Settings.PriorityPlayers, i)
+            break
+        end
+    end
+end
+
+function ESP:ClearPriorities()
+    self.Settings.PriorityPlayers = {}
+end
+
+-- ============================================================================
+-- Export
+-- ============================================================================
+
+-- Create a default instance
+local defaultESP = ESP:New()
+
+return {
+    New = ESP.New,
+    Default = defaultESP,
+    Utilities = Utilities,
+    Version = "2.0.0",
+    GitHub = "https://github.com/RbxCheats/UiLibESP"
+}
