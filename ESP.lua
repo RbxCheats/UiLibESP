@@ -45,45 +45,84 @@ function ESPLibrary.new()
     return self
 end
 
-function ESPLibrary:getBoundingVectors(part)
-    local partCFrame, partSize = part.CFrame, part.Size 
-    local X, Y, Z = partSize.X, partSize.Y, partSize.Z
-    return {
-        TBRC = partCFrame * CFrame.new(X, Y * 1.3, Z),
-        TBLC = partCFrame * CFrame.new(-X, Y * 1.3, Z),
-        TFRC = partCFrame * CFrame.new(X, Y * 1.3, -Z),
-        TFLC = partCFrame * CFrame.new(-X, Y * 1.3, -Z),
-        BBRC = partCFrame * CFrame.new(X, -Y * 1.6, Z),
-        BBLC = partCFrame * CFrame.new(-X, -Y * 1.6, Z),
-        BFRC = partCFrame * CFrame.new(X, -Y * 1.6, -Z),
-        BFLC = partCFrame * CFrame.new(-X, -Y * 1.6, -Z),
+function ESPLibrary:getAllBodyParts(character)
+    local parts = {}
+    
+    local bodyParts = {
+        "Head",
+        "UpperTorso",
+        "LowerTorso", 
+        "HumanoidRootPart",
+        "LeftUpperArm", "RightUpperArm",
+        "LeftLowerArm", "RightLowerArm",
+        "LeftHand", "RightHand",
+        "LeftUpperLeg", "RightUpperLeg",
+        "LeftLowerLeg", "RightLowerLeg",
+        "LeftFoot", "RightFoot"
     }
+    
+    for _, partName in ipairs(bodyParts) do
+        local part = character:FindFirstChild(partName)
+        if part then
+            table.insert(parts, part)
+        end
+    end
+    
+    return parts
 end
 
 function ESPLibrary:getScreenBounds(char)
     local camera = Workspace.CurrentCamera
-    if not camera then return nil, nil, nil, false, nil, nil end
+    if not camera then return nil, nil, nil, false, nil, nil, nil, nil end
     
-    local rootPart = char:FindFirstChild("HumanoidRootPart")
     local humanoid = char:FindFirstChildOfClass("Humanoid")
-    
-    if not rootPart or not humanoid or humanoid.Health <= 0 then
+    if not humanoid or humanoid.Health <= 0 then
         return nil, nil, nil, false
     end
     
-    local dimensions = self:getBoundingVectors(rootPart)
-    
-    local minX, maxX = camera.ViewportSize.X, 0
-    local minY, maxY = camera.ViewportSize.Y, 0
-    
-    for _, cf in pairs(dimensions) do
-        local vector = camera:WorldToViewportPoint(cf.Position)
-        local x, y = vector.X, vector.Y
-        if x < minX then minX = x end
-        if x > maxX then maxX = x end
-        if y < minY then minY = y end
-        if y > maxY then maxY = y end
+    local parts = self:getAllBodyParts(char)
+    if #parts == 0 then
+        return nil, nil, nil, false
     end
+    
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    local anyOnScreen = false
+    
+    for _, part in ipairs(parts) do
+        local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+        if onScreen then
+            anyOnScreen = true
+            minX = math.min(minX, screenPos.X)
+            maxX = math.max(maxX, screenPos.X)
+            minY = math.min(minY, screenPos.Y)
+            maxY = math.max(maxY, screenPos.Y)
+        end
+    end
+    
+    if not anyOnScreen then
+        local rootPart = char:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            local screenPos, onScreen = camera:WorldToViewportPoint(rootPart.Position)
+            if onScreen then
+                anyOnScreen = true
+                minX = screenPos.X - 50
+                maxX = screenPos.X + 50
+                minY = screenPos.Y - 100
+                maxY = screenPos.Y + 50
+            end
+        end
+    end
+    
+    if not anyOnScreen then
+        return nil, nil, nil, false
+    end
+    
+    local padding = 5
+    minX = math.max(0, minX - padding)
+    minY = math.max(0, minY - padding)
+    maxX = math.min(camera.ViewportSize.X, maxX + padding)
+    maxY = math.min(camera.ViewportSize.Y, maxY + padding)
     
     local width = maxX - minX
     local height = maxY - minY
@@ -161,9 +200,8 @@ function ESPLibrary:update()
         currentCharacters[char] = true
         
         local hum = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
         
-        if not (hum and root and hum.Health > 0) then
+        if not (hum and hum.Health > 0) then
             self:clearPlayerDrawings(char)
             continue
         end
@@ -177,9 +215,6 @@ function ESPLibrary:update()
             continue
         end
         
-        local boxX = minX
-        local boxY = minY
-        
         if self.espType == "2D Box" then
             if self.currentEspType ~= "2D Box" then
                 for i = 1, 8 do
@@ -189,7 +224,7 @@ function ESPLibrary:update()
             end
             d.box.Visible = true
             d.box.Size = Vector2.new(width, height)
-            d.box.Position = Vector2.new(boxX, boxY)
+            d.box.Position = Vector2.new(minX, minY)
             d.box.Color = self.espColor
             self.currentEspType = "2D Box"
         elseif self.espType == "Corner Box" then
@@ -197,13 +232,14 @@ function ESPLibrary:update()
                 d.box.Visible = false
             end
             
-            local distance = (camera.CFrame.Position - root.Position).Magnitude
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local distance = root and (camera.CFrame.Position - root.Position).Magnitude or 100
             local offset = math.clamp(1 / distance * 750, 2, 300)
             
-            local topLeft = Vector2.new(boxX, boxY)
-            local topRight = Vector2.new(boxX + width, boxY)
-            local bottomLeft = Vector2.new(boxX, boxY + height)
-            local bottomRight = Vector2.new(boxX + width, boxY + height)
+            local topLeft = Vector2.new(minX, minY)
+            local topRight = Vector2.new(maxX, minY)
+            local bottomLeft = Vector2.new(minX, maxY)
+            local bottomRight = Vector2.new(maxX, maxY)
             
             d.c1.From = topLeft
             d.c1.To = Vector2.new(topLeft.X + offset, topLeft.Y)
@@ -271,7 +307,7 @@ function ESPLibrary:update()
         if self.tracers then
             d.tracer.Visible = true
             d.tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-            d.tracer.To = Vector2.new(center.X, minY + height)
+            d.tracer.To = Vector2.new(center.X, maxY)
             d.tracer.Color = self.tracerColor
         else
             if d.tracer then d.tracer.Visible = false end
