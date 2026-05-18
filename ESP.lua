@@ -16,9 +16,8 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local CoreGui = game:GetService("CoreGui")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
 -- Local references
 local LocalPlayer = Players.LocalPlayer
@@ -1643,13 +1642,19 @@ end
 -- Export
 -- ============================================================================
 
+-- ========== FIXED EXPORT SECTION ==========
 -- Create a default instance
 local defaultESP = ESP:New()
 
+-- Export a proper constructor that doesn't break
+local function createInstance(settings)
+    return ESP:New(settings)
+end
+
 return {
-    New = ESP.New,
-    Default = defaultESP,
+    New = createInstance,        -- FIXED: now a proper function that calls ESP:New correctly
+    Default = defaultESP,        -- pre-built instance
     Utilities = Utilities,
-    Version = "2.0.0",
+    Version = "2.0.1",
     GitHub = "https://github.com/RbxCheats/UiLibESP"
 }
