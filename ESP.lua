@@ -161,7 +161,6 @@ local function updateEsp()
                 esp.tracer.Visible = false
                 for _, line in ipairs(esp.boxLines) do line.Visible = false end
                 for _, lineData in ipairs(esp.skeletonLines) do lineData[1].Visible = false end
-                goto continue
             end
             
             -- Compute box size and position
@@ -360,8 +359,7 @@ local function updateEsp()
             for _, line in ipairs(esp.boxLines) do line.Visible = false end
             for _, lineData in ipairs(esp.skeletonLines) do lineData[1].Visible = false end
         end
-        
-        ::continue::
+    
     end
 end
 
