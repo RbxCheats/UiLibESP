@@ -1,5 +1,5 @@
 --[[
-    Advanced ESP Library for Roblox
+    Advanced ESP Library for Roblox (Fixed & Optimized)
     Features:
     - 2D Box & Corner Box ESP
     - Tracer to bottom middle of box
@@ -70,7 +70,7 @@ local function createDrawing(class, properties)
     return drawing
 end
 
--- Helper: Check if player is behind a wall (modern raycast)
+-- Helper: Check if player is behind a wall (Fixed Modern Raycast API)
 local function isPlayerBehindWall(player)
     local character = player.Character
     if not character then return false end
@@ -79,13 +79,18 @@ local function isPlayerBehindWall(player)
     if not rootPart then return false end
     
     local origin = camera.CFrame.Position
-    local direction = (rootPart.Position - origin).Unit * (rootPart.Position - origin).Magnitude
+    local direction = (rootPart.Position - origin)
+    
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {localPlayer.Character, character}
     
     local result = workspace:Raycast(origin, direction, raycastParams)
-    return result and result.Instance:IsA("Part") or result and result.Instance:IsA("MeshPart")
+    
+    if result and result.Instance then
+        return result.Instance:IsA("BasePart") and result.Instance.CanCollide
+    end
+    return false
 end
 
 -- Create ESP drawings for a new player
@@ -116,16 +121,18 @@ local function removeEsp(player)
     local esp = espCache[player]
     if not esp then return end
     
-    -- Remove all drawings
-    esp.box:Remove()
-    esp.boxOutline:Remove()
-    esp.name:Remove()
-    esp.healthOutline:Remove()
-    esp.health:Remove()
-    esp.distance:Remove()
-    esp.tracer:Remove()
-    for _, line in ipairs(esp.boxLines) do line:Remove() end
-    for _, lineData in ipairs(esp.skeletonLines) do lineData[1]:Remove() end
+    -- Remove all drawings safely
+    pcall(function()
+        esp.box:Remove()
+        esp.boxOutline:Remove()
+        esp.name:Remove()
+        esp.healthOutline:Remove()
+        esp.health:Remove()
+        esp.distance:Remove()
+        esp.tracer:Remove()
+        for _, line in ipairs(esp.boxLines) do line:Remove() end
+        for _, lineData in ipairs(esp.skeletonLines) do lineData[1]:Remove() end
+    end)
     
     espCache[player] = nil
 end
@@ -134,12 +141,12 @@ end
 local function updateEsp()
     for player, esp in pairs(espCache) do
         local character = player.Character
-        local humanoid = character and character:FindFirstChild("Humanoid")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         local rootPart = character and character:FindFirstChild("HumanoidRootPart")
         local head = character and character:FindFirstChild("Head")
         
         -- Visibility conditions
-        local isValid = character and humanoid and rootPart and head
+        local isValid = character and humanoid and rootPart and head and humanoid.Health > 0
         local isTeammate = ESP_SETTINGS.Teamcheck and player.Team == localPlayer.Team
         local isBehindWall = ESP_SETTINGS.WallCheck and isPlayerBehindWall(player)
         local shouldRender = ESP_SETTINGS.Enabled and isValid and not isTeammate and not isBehindWall
@@ -162,7 +169,7 @@ local function updateEsp()
             local topY = camera:WorldToViewportPoint(rootPart.Position + Vector3.new(0, 2.6, 0)).Y
             local charHeight = (bottomY - topY) / 2
             local boxSize = Vector2.new(math.floor(charHeight * 1.8), math.floor(charHeight * 1.9))
-            local boxPos = Vector2.new(math.floor(hrpPos.X - charHeight * 1.8 / 2), math.floor(hrpPos.Y - charHeight * 1.6 / 2))
+            local boxPos = Vector2.new(math.floor(hrpPos.X - boxSize.X / 2), math.floor(hrpPos.Y - boxSize.Y / 2))
             
             -- ----- BOX RENDERING (2D or Corner) -----
             if ESP_SETTINGS.ShowBox then
@@ -170,13 +177,15 @@ local function updateEsp()
                     -- Hide corner lines if any
                     for _, line in ipairs(esp.boxLines) do line.Visible = false end
                     -- Update and show standard boxes
+                    esp.boxOutline.Position = boxPos
+                    esp.boxOutline.Size = boxSize
+                    esp.boxOutline.Color = ESP_SETTINGS.BoxOutlineColor
+                    esp.boxOutline.Visible = true
+
                     esp.box.Position = boxPos
                     esp.box.Size = boxSize
                     esp.box.Color = ESP_SETTINGS.BoxColor
                     esp.box.Visible = true
-                    esp.boxOutline.Position = boxPos
-                    esp.boxOutline.Size = boxSize
-                    esp.boxOutline.Visible = true
                 elseif ESP_SETTINGS.BoxType == "Corner" then
                     -- Hide standard boxes
                     esp.box.Visible = false
@@ -255,7 +264,7 @@ local function updateEsp()
             
             -- ----- HEALTH BAR -----
             if ESP_SETTINGS.ShowHealth and humanoid then
-                local healthPercent = humanoid.Health / humanoid.MaxHealth
+                local healthPercent = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
                 local barX = boxPos.X - 6
                 local barTop = boxPos.Y
                 local barBottom = boxPos.Y + boxSize.Y
@@ -296,12 +305,16 @@ local function updateEsp()
                     local boneA = character:FindFirstChild(partA)
                     local boneB = character:FindFirstChild(partB)
                     if boneA and boneB then
-                        local posA = camera:WorldToViewportPoint(boneA.Position)
-                        local posB = camera:WorldToViewportPoint(boneB.Position)
-                        line.From = Vector2.new(posA.X, posA.Y)
-                        line.To = Vector2.new(posB.X, posB.Y)
-                        line.Color = ESP_SETTINGS.SkeletonsColor
-                        line.Visible = true
+                        local posA, aOnScreen = camera:WorldToViewportPoint(boneA.Position)
+                        local posB, bOnScreen = camera:WorldToViewportPoint(boneB.Position)
+                        if aOnScreen and bOnScreen then
+                            line.From = Vector2.new(posA.X, posA.Y)
+                            line.To = Vector2.new(posB.X, posB.Y)
+                            line.Color = ESP_SETTINGS.SkeletonsColor
+                            line.Visible = true
+                        else
+                            line.Visible = false
+                        end
                     else
                         line.Visible = false
                     end
@@ -379,7 +392,9 @@ end
 
 function ESPLib.SetSettings(newSettings)
     for k, v in pairs(newSettings) do
-        ESP_SETTINGS[k] = v
+        if ESP_SETTINGS[k] ~= nil then
+            ESP_SETTINGS[k] = v
+        end
     end
 end
 
